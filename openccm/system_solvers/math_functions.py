@@ -14,30 +14,32 @@
 # You should have received a copy of the GNU Lesser General Public License along with OpenCCM. If not, see             #
 # <https://www.gnu.org/licenses/>.                                                                                     #
 ########################################################################################################################
-from typing import Dict, Tuple, List, Set
-
-import numpy as np
-
-from .cstr import create_cstr_network
-from .pfr import create_pfr_network
-from ..config_functions import ConfigParser
-from ..mesh import CMesh
+from numpy import pi
+from sympy import Function, Piecewise, cos
 
 
-def create_model_network(model,
-                         compartments:           Dict[int, Set[int]],
-                         compartment_network:    Dict[int, Dict[int, Dict[int, Tuple[int, np.ndarray]]]],
-                         mesh:                   CMesh,
-                         vel_vec:                np.ndarray,
-                         dir_vec:                np.ndarray,
-                         config_parser:          ConfigParser)\
-        -> Tuple[
-            Dict[int, Tuple[Dict[int, int], Dict[int, int]]],
-            np.ndarray,
-            np.ndarray,
-            Dict[int, List[int]]
-        ]:
-    if model == 'pfr':
-        return create_pfr_network(compartments, compartment_network, mesh, vel_vec, dir_vec, config_parser)
-    else:
-        return create_cstr_network(compartments, compartment_network, mesh, vel_vec, dir_vec, config_parser)
+class H(Function):
+    """
+    Wrapper class for sympy usage.
+    """
+
+    @classmethod
+    def eval(cls, t, y_start: float = 0.0, y_stop: float = 1.0, t_start: float = 0.0, dt: float = 1.0):
+        """
+        Smoothed Heaviside function using a cosine ramp to avoid numerical oscilations.
+        Ramping happens over a half-period to provide a zero derivative at both the start and end point of the
+        smoothing period.
+
+        Args:
+            t:          The time at which to evaluate the function at
+            y_start:    The initial value of the function before t = t_start
+            y_stop:     The final value of the function at t = t_start + dt
+            t_start:    The time at which the function should start going from y_start to y_stop
+            dt:         The period of time over which the function goes from y_start to y_stop
+        """
+        return Piecewise(
+            (y_start,                                                     t < t_start),
+            (y_stop,                                                            t > t_start + dt),
+            ((y_start+y_stop)/2 + (y_start-y_stop)/2 * cos((t-t_start)*pi/dt),  True)
+        )
+
