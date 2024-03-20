@@ -1,0 +1,33 @@
+For running this simulation in your system you have to follow these steps :
+
+1 - Mesh has been created using Gmsh and you will need to convert it to OpenFOAM mesh format. First, save the mesh in .msh format and then use command <gmshToFoam mesh_name.msh> for our case it would be <gmshToFoam pipe_recirc_structured.msh> to convert it into OpenFOAM mesh format.
+
+2 - You will get the folder named 'constant'. You will need to make changes in file <constant/polyMesh/boundary>. change the patch type for each physical surfaces. for this case :
+	(
+    top_and_bottom
+    {
+        type            empty;
+    }
+    wall
+    {
+        type            wall;
+    }
+    inlet
+    {
+        type            patch;
+    }
+    outlet
+    {
+        type            patch;
+    }
+	)
+	 NOTE - Please don't change the "nFaces" and "startFace" value for each physical surface.
+	 
+Now you are done with the mesh conversion.
+
+4 -  If necessary, make parameter adjustments in the 'system/controlDict' file. However, you may not need to modify parameters in this file for most cases.
+     Optionally, you can make changes to the numerical schemes used by modifying the 'system/fvSchemes' and 'system/fvSolution' files.
+
+5 - Now, just write command <simpleFoam> in terminal to run openfoam simulation.
+
+Please ensure that you have OpenFOAM installed and properly configured on your system before following these steps. Additionally, adjust any simulation-specific parameters or settings as needed for your specific case.
