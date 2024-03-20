@@ -27,6 +27,29 @@ import numpy as np
 from ..config_functions import ConfigParser
 from ..mesh import CMesh
 
+OPENFOAM_SCALAR_HEADER = """/*--------------------------------*- C++ -*----------------------------------*\\
+  =========                 |
+  \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\\\    /   O peration     | Website:  https://openfoam.org
+    \\\\  /    A nd           | Version:  10
+     \\\\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{{
+    format      ascii;
+    class       volScalarField;
+    location    "{}";
+    object      {};
+}}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+dimensions      [0 0 0 0 0 0 0];
+
+internalField   nonuniform List<scalar> 
+{}
+(
+"""
+
 
 # NOTE: The lack of type hints is not an oversight.
 #       It was done on purpose to avoid making the optional OpenCMP and NGSolve dependency required.
@@ -81,6 +104,220 @@ def create_compartment_label_gfu(mesh, compartments: Dict[int, Set[int]]):
             gfu.vec[id_element] = id_compartment
 
     return gfu
+
+
+def label_elements_openfoam(cmesh: CMesh, config_parser: ConfigParser) -> None:
+    """
+    Label each mesh element with its ID to help with debugging.
+
+    Args:
+        cmesh:          The CMesh to print out labels for
+        config_parser:  The OpenCCM ConfigParser.
+    """
+    # t_span has to be loaded as a float and then converted to str so that zero gets handled correctly.
+    # Asking for t_span directly as str results in 0 being returned instead of 0.0, which will cause two zero folders
+    # to be created. One being 0/ created here, and the other 0.0/ created by output the concentration profile to VTK.
+    time_0 = str(config_parser.get_list(['SIMULATION', 't_span'], float)[0])
+    output_file_name = str(time_0) + '/' + 'element_labels'
+
+    output_folder_path = config_parser.get_item(['SETUP', 'output_folder_path'], str)
+    vtu_folder_path = config_parser.get_item(['POST-PROCESSING', 'vtu_dir'], str)
+
+    # Create the output directory if it doesn't exist
+    Path(output_folder_path + vtu_folder_path + output_file_name.split("/")[-2]).mkdir(parents=True, exist_ok=True)
+
+    num_elements = len(cmesh.element_sizes)
+    with open(output_folder_path + vtu_folder_path + output_file_name, 'w') as output_file:
+        # Write Header
+        output_file.write(OPENFOAM_SCALAR_HEADER.format(time_0, "element_id", num_elements))
+
+        # Write elements
+        for i in range(num_elements):
+            output_file.write(str(i) + '\n')
+        output_file.write(')\n;\n\n')
+
+        # Write boundary info
+        output_file.write('boundaryField\n{\n')
+        for bc_name in cmesh.bc_to_facet_map.keys():
+            output_file.write(f'\t{bc_name}\n')
+            output_file.write('\t{\n')
+            output_file.write('\t\ttype\t\t\tcalculated;\n')
+            output_file.write('\t\tvalue\t\t\tuniform 0;\n')
+            output_file.write('\t}\n')
+        output_file.write('}\n\n')
+    return
+
+
+def label_compartments_openfoam(output_file_name: str, compartments: Dict[int, Set[int]], config_parser: ConfigParser) -> None:
+    """
+    Label each mesh element with the ID of the compartment it belongs to.
+    A value of -1 is used to represent elements which are not added to any compartment (e.g. those on a no-slip BC).
+
+    Args:
+        output_file_name:   The filename to save the labeled mesh value into.
+        compartments:       The compartments to visualize.
+        config_parser:      The OpenCCM ConfigPararser.
+    """
+    # t_span has to be loaded as a float and then converted to str so that zero gets handled correctly.
+    # Asking for t_span directly as str results in 0 being returned instead of 0.0, which will cause two zero folders
+    # to be created. One, 0/, created here and the other, 0.0/, created by saving the concentrations to VTK.
+    output_file_name = str(config_parser.get_list(['SIMULATION', 't_span'], float)[0]) + '/' + output_file_name
+
+    output_folder_path       = config_parser.get_item(['SETUP',           'output_folder_path'],        str)
+    vtu_folder_path          = config_parser.get_item(['POST-PROCESSING', 'vtu_dir'],                   str)
+    openfoam_sol_folder_path = config_parser.get_item(['INPUT',           'openfoam_sol_folder_path'],  str)
+
+    # Create the output directory if it doesn't exist
+    Path(output_folder_path + vtu_folder_path + output_file_name.split("/")[-2]).mkdir(parents=True, exist_ok=True)
+
+    # Create an empty .FOAM file that can be dragged into Paraview for easy visualization
+    # The leading underscore is important as it allows the file to be sorted to the top of directory
+    with open(output_folder_path + vtu_folder_path + '_compartmental_model_results.FOAM', 'w'):
+        pass
+
+    shutil.copytree(openfoam_sol_folder_path + 'constant',
+                    output_folder_path + vtu_folder_path + 'constant',
+                    dirs_exist_ok=True)
+
+    element_to_compartment: Dict[int, int] = defaultdict(lambda: -1)
+    for compartment_id, elements in compartments.items():
+        for element_id in elements:
+            element_to_compartment[element_id] = compartment_id
+    
+    # Extract values from the output file path
+    split_output_file_string = output_file_name.split("/")
+    object_value = split_output_file_string[-1]
+    location_value = split_output_file_string[-2]
+
+    input_file  = config_parser.get_item(['INPUT', 'volume_file_path'], str)
+    output_file = output_folder_path + vtu_folder_path + output_file_name
+
+    # Process input and output files (overwriting output file)
+    k = 0
+    startWrite = False
+    with open(input_file, 'r') as input_file, open(output_file, 'w') as output_file:
+        for line in input_file:
+            # Modify object value in the output file
+            if "object" in line:
+                output_file.write(f'    object      {object_value};\n')
+                continue
+            # Modify location value in the output file
+            if "location" in line:
+                output_file.write(f'    location    "{location_value}";\n')
+                continue
+            # Start writing compartment labels
+            if line == "(\n" and k == 0:
+                startWrite = True
+                output_file.write(line)
+                continue
+            # End writing compartment labels
+            if line == ")\n":
+                startWrite = False
+                output_file.write(line)
+                continue
+            # Write compartment label for each element
+            if startWrite:
+                output_file.write(str(element_to_compartment[k]) + "\n")
+                k += 1
+            else:
+                # Copy the original content from input file
+                output_file.write(line)
+
+
+def cstrs_to_vtu_and_save_openfoam(
+        system_results: Tuple[
+                            np.ndarray,
+                            np.ndarray,
+                            Dict[int, List[Tuple[int, int]]],
+                            Dict[int, List[Tuple[int, int]]]
+                        ],
+        compartments:   Dict[int, Set[int]],
+        config_parser:  ConfigParser,
+        cmesh:          CMesh) -> None:
+    """
+    Takes a time series from running a simulation on the compartment network and outputs it to native OpenFOAM format.
+    Each mesh cell is labelled based on which compartment it was a part of.
+    Cells which were not part of any compartment are labelled with -1.
+
+    Args:
+        system_results: The simulation results to visualize (concentrations, times, inlets mapping, outlets mapping).
+        compartments:   The compartments
+        config_parser:  The OpenCCM ConfigParser.
+        cmesh:          The CMesh from which the model and network were calculated.
+    """
+    print("Exporting simulation visualization")
+
+    output_folder_path          = config_parser.get_item(['SETUP',              'output_folder_path'],          str)
+    vtu_folder_path             = config_parser.get_item(['POST-PROCESSING',    'vtu_dir'],                     str)
+    species_names               = config_parser.get_list(['SIMULATION',         'specie_names'],                str)
+
+    element_to_compartment: Dict[int, int] = {}
+    for compartment_id, elements in compartments.items():
+        for element_id in elements:
+            element_to_compartment[element_id] = compartment_id
+
+    num_elements = len(cmesh.element_sizes)
+    concentrations_all_time, ts, _, _ = system_results
+
+    def val_for_el(element: int, specie_id: int, i: int) -> str:
+        """Helper function to do the element-to-value lookup."""
+        if element in element_to_compartment:
+            return f"{concentrations_all_time[specie_id, element_to_compartment[element], i]}\n"
+        else:
+            return "-1.0\n"
+
+    # Links to the original files for labeled compartments
+    post_source = os.path.abspath(os.path.join(output_folder_path + vtu_folder_path + str(ts[0]), "compartments_post"))
+    pre_source  = os.path.abspath(os.path.join(output_folder_path + vtu_folder_path + str(ts[0]), "compartments_pre"))
+
+    for i, t in enumerate(ts):
+        output_folder_time = output_folder_path + vtu_folder_path + str(t)
+        # Throw an error if the folder already exists and this is not the first timestep.
+        # First timestep will be created to store element and compartment label information.
+        Path(output_folder_time).mkdir(parents=True, exist_ok=(i == 0))
+
+        if i > 0:
+            os.symlink(post_source, os.path.join(output_folder_time, "compartments_post"))
+            os.symlink(pre_source,  os.path.join(output_folder_time, "compartments_pre"))
+
+        for specie_id, specie_name in enumerate(species_names):
+            with (open(output_folder_time + '/c_' + specie_name, 'w') as output_file):
+                output_file.write(OPENFOAM_SCALAR_HEADER.format(t, specie_name, num_elements))
+
+                for id_element in range(num_elements):  # Must write to file in sequential order of elements
+                    output_file.write(val_for_el(id_element, specie_id, i))
+
+                output_file.write(")\n"
+                                  ";\n"
+                                  "\n"
+                                  "boundaryField\n"
+                                  "{\n")
+
+                for bc_name, facets in cmesh.bc_to_facet_map.items():
+                    facet_concentration_values = []
+                    for facet in facets:
+                        facet_concentration_values.append(val_for_el(cmesh.facet_elements[facet][0], specie_id, i))
+
+                    facet_concentrations = '\t\t\t'.join(facet_concentration_values)
+
+                    output_file.write(f""
+                                      f"\t{bc_name}\n"
+                                      f"\t{{\n"
+                                      f"\t\ttype            calculated;\n"
+                                      f"\t\tvalue           nonuniform List<scalar>\n" 
+                                      f"\t\t{len(facets)}\n"
+                                      f"\t\t(\n"
+                                      f"\t\t\t{facet_concentrations}"
+                                      f"\t\t)\n"
+                                      f"\t\t;\n"
+                                      f"\t}}\n")
+
+                output_file.write("}\n"
+                                  "\n"
+                                  "// ************************************************************************* //")
+
+    print("Done exporting simulation visualization")
+
 
 def cstrs_to_vtu_and_save_opencmp(
         system_results: Tuple[
