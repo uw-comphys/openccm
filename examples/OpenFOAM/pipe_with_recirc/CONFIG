@@ -1,0 +1,33 @@
+[INPUT]
+openfoam_sol_folder_path = ./
+min_magnitude_threshold = 6e-5
+
+no_flux_names       = ("wall",)
+ignored_names       = ("top_and_bottom",)
+domain_inlet_names  = ("inlet",)
+domain_outlet_names = ("outlet",)
+
+[COMPARTMENTALIZATION]
+bc_names_for_seeds  = ("inlet",)
+min_compartment_size = 0.05
+
+[COMPARTMENT MODELLING]
+model = CSTR
+
+[SIMULATION]
+run                 = True
+t_span              = 0, 500_000
+points_per_pfr      = 2
+specie_names        = a, b, c
+reactions_file_path = reactions
+initial_conditions  = a -> 0
+                      b -> 0
+                      c -> 0
+boundary_conditions = a: inlet -> H(t)
+                      b: inlet -> 0
+                      c: inlet -> 0
+
+[POST-PROCESSING]
+inlet_bc_name          = inlet
+outlet_bc_name         = outlet
+output_VTK             = True
