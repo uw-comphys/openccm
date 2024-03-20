@@ -1,0 +1,10 @@
+[Stokes]
+all = all -> None
+
+[INS]
+all = all -> output/stokes_sol/stokes_0.0.sol
+
+[MultiComponentINS]
+u = all -> output/components_sol/u.sol
+p = all -> output/components_sol/p.sol
+a = all -> 0
