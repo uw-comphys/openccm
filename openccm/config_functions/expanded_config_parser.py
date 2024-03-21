@@ -159,8 +159,13 @@ class ConfigParser(configparser.ConfigParser):
             self['INPUT']['owner_file_path']     = openfoam_sol_folder_path + "constant/polyMesh/owner"
             self['INPUT']['neighbour_file_path'] = openfoam_sol_folder_path + "constant/polyMesh/neighbour"
             self['INPUT']['boundary_file_path']  = openfoam_sol_folder_path + "constant/polyMesh/boundary"
-            self['INPUT']['volume_file_path']    = openfoam_sol_folder_path + last_time_step + "/V"
             self['INPUT']['velocity_file_path']  = openfoam_sol_folder_path + last_time_step + "/U"
+            if Path(openfoam_sol_folder_path + last_time_step + "/V").exists():  # OpenFOAM 10
+                self['INPUT']['volume_file_path'] = openfoam_sol_folder_path + last_time_step + "/V"
+            elif Path(openfoam_sol_folder_path + last_time_step + "/Vc").exists():  # OpenFOAM 11
+                self['INPUT']['volume_file_path'] = openfoam_sol_folder_path + last_time_step + "/Vc"
+            else:
+                raise FileNotFoundError("Could not find mesh cell size file V or Vc.")
 
         # NOTE: This one is left as relative to `output_folder_path` because of its final use in the .PVD file
         vtu_folder_path = self.get_item(['POST-PROCESSING', 'vtu_dir'], str)
