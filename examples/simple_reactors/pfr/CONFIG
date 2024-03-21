@@ -1,0 +1,34 @@
+[INPUT]
+opencmp_config_file_path    = ../fake_sim_input/config_hydrodynamics
+opencmp_sol_file_path       = ../fake_sim_input/output/ins_sol/ins_0.0.sol
+num_refinements             = 0
+min_magnitude_threshold     = 6e-5
+
+no_flux_names       = None
+ignored_names       = ("top", "bottom")
+domain_inlet_names  = ("left",)
+domain_outlet_names = ("right",)
+
+[COMPARTMENTALIZATION]
+bc_names_for_seeds  = ("left",)
+min_compartment_size = 0.999
+
+[COMPARTMENT MODELLING]
+model = PFR
+
+[SIMULATION]
+run                 = True
+t_span              = 0, 20
+points_per_pfr      = 101
+specie_names        = a, b
+reactions_file_path = reactions
+initial_conditions  = a -> 0
+                      b -> 0
+boundary_conditions = a: left -> H(100*t)
+                      b: left -> 0
+
+[POST-PROCESSING]
+inlet_bc_name          = left
+outlet_bc_name         = right
+output_VTK             = False
+network_diagram        = False

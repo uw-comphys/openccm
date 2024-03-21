@@ -1,0 +1,8 @@
+[REACTIONS]
+R1: a -> b
+R2: b -> c
+
+[RATES]
+R1: 0.5
+R2: 0.2
+
