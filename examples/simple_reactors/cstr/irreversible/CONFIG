@@ -1,6 +1,6 @@
 [INPUT]
-opencmp_config_file_path    = ../../fake_sim_input/config_hydrodynamics
-opencmp_sol_file_path       = ../../fake_sim_input/output/ins_sol/ins_0.0.sol
+opencmp_config_file_path    = ../../input_data_generation/config_hydrodynamics
+opencmp_sol_file_path       = ../../input_data_generation/output/ins_sol/ins_0.0.sol
 num_refinements             = 0
 min_magnitude_threshold     = 6e-5
 
