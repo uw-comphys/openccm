@@ -13,13 +13,13 @@
 
 \begin{document}
 
-\title{\texttt{OpenCCM} PFR Validation: Irreversible Nonlinear Reaction}
+\title{\texttt{OpenCCM} PFR Validation: Irreversible Linear Reaction}
 \author{Matthew Peres Tino}
 \maketitle
 
 \section{Reaction System}
 
-Suppose we have the following irreversible nonlinear reaction:
+Suppose we have the following irreversible linear reaction:
 \begin{center}
 	$a\xrightarrow[]{k} 2b$
 \end{center}
@@ -241,7 +241,7 @@ The error between these two solutions for a species computed at each timestep $i
 
 In conclusion:
 \begin{itemize}
-	\item \texttt{OpenCCM}'s PFR implementation can handle nonlinear irreversible reactions as validated by comparison to an analytically derived mass balance system. 
+	\item \texttt{OpenCCM}'s PFR implementation can handle linear irreversible reactions as validated by comparison to an analytically derived mass balance system. 
 	\item Increasing the PFR discretization points marginally affected the order of magnitude for the error (however, it still decreased the error as expected). 
 	\item This is not a significant result compared to the change in error observed from decreasing relative/absolute tolerances in the various CSTR validations. 
 \end{itemize}
