@@ -550,25 +550,12 @@ def connect_compartments_using_unidirectional_assumptions(compartment_network:  
     #   The position of each facet is the mean of all of its vertices
     centers_of_flow_for_connection: Dict[int, np.ndarray] = dict()
     with open(log_folder_path + 'connect' + ('' if final else '_for_merge') + '.txt', 'w') as logging:
-        # Calculate the average direction of each compartment
-        avg_directions: Dict[int, np.ndarray] = dict()
-        for id_compartment in compartment_network:
-            avg_directions[id_compartment] = np.mean(dir_vec[sorted(compartments[id_compartment])], 0)
-            avg_directions[id_compartment] /= np.linalg.norm(avg_directions[id_compartment])
-
-        if DEBUG:
-            logging.write("avg_direction\n")
-            for i, flow in avg_directions.items():
-                logging.write("{}: {}\n".format(i, flow))
-
         # Calculate the number of connections between compartments and their locations
         for id_compartment in compartment_network:
             # Inlets and outlets for this compartment.
             #   Key is connection ID, value is the ID of the other compartment
             #   A negative key represents an outlet and a positive an inlet
             compartment_connections: Dict[int, int] = dict()
-
-            avg_direction = avg_directions[id_compartment]
 
             # Calculate flowrate, center of flow, and inlet/outlet status for all connection for this compartment
             for neighbour in compartment_network[id_compartment]:
@@ -693,12 +680,17 @@ def connect_compartments_using_unidirectional_assumptions(compartment_network:  
                 # Must have at least one inlet or outlet. Otherwise, something has gone horrible wrong.
                 assert len(compartment_connections) > 1
 
+                # Calculate average direction
+                avg_direction = np.mean(dir_vec[sorted(compartments[id_compartment])], 0)
+                avg_direction /= np.linalg.norm(avg_direction)
+                if DEBUG:
+                    logging.write(f"avg_direction {id_compartment} = {avg_direction}\n")
+
                 # Calculate the ordering of the inlets/outlets
                 # Project centers of flux onto average direction
                 # Min and max values for normalizing between 0.0 and 1.0
                 # (setting to inf and -inf so that the min and max always work).
-                dot_min = np.inf
-                dot_max = -np.inf
+                dot_min, dot_max = np.inf, -np.inf
                 connections_distances_i: Dict[int, float] = dict()
                 for id_connection in compartment_connections:
                     center_of_flow = centers_of_flow_for_connection[abs(id_connection)]
