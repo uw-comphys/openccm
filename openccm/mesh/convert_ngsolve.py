@@ -19,14 +19,11 @@ from typing import Dict, List, Tuple, Callable
 
 import numpy as np
 
-from ngsolve import CoefficientFunction, FacetFESpace, GridFunction, Mesh
-from ngsolve.comp import MeshNode, Ngs_Element, Integrate
-
 from .cmesh import CMesh, GroupedBCs
 from ..config_functions import ConfigParser
 
 
-def convert_mesh_ngsolve(config_parser: ConfigParser, mesh: Mesh) -> CMesh:
+def convert_mesh_ngsolve(config_parser: ConfigParser, mesh: 'ngsolve.Mesh') -> CMesh:
     """
     Convert the NGSolve mesh into OpenCCM's internal format.
 
@@ -53,6 +50,7 @@ def convert_mesh_ngsolve(config_parser: ConfigParser, mesh: Mesh) -> CMesh:
                                       because they have a magnitude of 0.
     """
     print("Converting Mesh")
+    from ngsolve import Integrate, CoefficientFunction
 
     _all_elements = tuple(mesh.Elements())
     vertices                                        = np.array([np.array(vertex.point) for vertex in mesh.vertices])
@@ -82,7 +80,7 @@ def convert_mesh_ngsolve(config_parser: ConfigParser, mesh: Mesh) -> CMesh:
     return cmesh
 
 
-def _create_bc_mappings(mesh: Mesh, grouped_bcs: GroupedBCs) -> Tuple[np.ndarray, Dict[str, Tuple[int, ...]]]:
+def _create_bc_mappings(mesh: 'ngsolve.Mesh', grouped_bcs: GroupedBCs) -> Tuple[np.ndarray, Dict[str, Tuple[int, ...]]]:
     """
     Create a dictionary for mapping mesh facets to the BC that they represent.
 
@@ -99,6 +97,8 @@ def _create_bc_mappings(mesh: Mesh, grouped_bcs: GroupedBCs) -> Tuple[np.ndarray
                             * grouped_bcs.id(bc_name) for everything else.
         bc_to_facet_map: A dictionary mapping each BC NAME to the facets that make it up.
     """
+    from ngsolve import CoefficientFunction, FacetFESpace, GridFunction
+
     assert len(set(mesh.GetBoundaries())) == grouped_bcs.num_bcs
 
     def label_facets_using_func(labeling_func: Callable) -> np.ndarray:
@@ -127,7 +127,7 @@ def _create_bc_mappings(mesh: Mesh, grouped_bcs: GroupedBCs) -> Tuple[np.ndarray
     return facet_to_bc_id_map, bc_name_to_facet_map
 
 
-def _create_element_connectivity(mesh: Mesh, all_elements: Tuple[Ngs_Element]) -> Dict[int, List[int]]:
+def _create_element_connectivity(mesh: 'ngsolve.Mesh', all_elements: Tuple['ngsolve.comp.Ngs_Element']) -> Dict[int, List[int]]:
     """
     Returns:
         neighbours_all: A tuple of the IDs of all neighbouring elements of a given element ID, indexed by that ID.
@@ -150,7 +150,7 @@ def _create_element_connectivity(mesh: Mesh, all_elements: Tuple[Ngs_Element]) -
     return neighbours_all
 
 
-def _create_facet_connectivity(mesh: Mesh) -> Tuple[Tuple[int, ...], ...]:
+def _create_facet_connectivity(mesh: 'ngsolve.Mesh') -> Tuple[Tuple[int, ...], ...]:
     """
     Returns:
         neighbours_all: A tuple of the IDs of all neighbouring facets of a given facet ID, indexed by that ID.
@@ -158,7 +158,7 @@ def _create_facet_connectivity(mesh: Mesh) -> Tuple[Tuple[int, ...], ...]:
     neighbours_all: Dict[int, Tuple[int, ...]] = dict()
 
     if mesh.dim == 2:  # Facets are edges in 2D
-        edges: Tuple[MeshNode] = tuple(mesh.edges)
+        edges: Tuple['ngsolve.comp.MeshNode'] = tuple(mesh.edges)
         vertex_edges = list(set(edge.nr for edge in vertex.edges) for vertex in mesh.vertices)
         for edge in edges:
             neighbours = set()
