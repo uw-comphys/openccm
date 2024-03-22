@@ -51,9 +51,7 @@ internalField   nonuniform List<scalar>
 """
 
 
-# NOTE: The lack of type hints is not an oversight.
-#       It was done on purpose to avoid making the optional OpenCMP and NGSolve dependency required.
-def create_element_label_gfu(mesh):
+def create_element_label_gfu(mesh: 'ngsolve.Mesh') -> 'ngsolve.GridFunction':
     """
     Function which labels each element based on its ID.
 
@@ -74,7 +72,7 @@ def create_element_label_gfu(mesh):
     return gfu
 
 
-def create_compartment_label_gfu(mesh, compartments: Dict[int, Set[int]]):
+def create_compartment_label_gfu(mesh: 'ngsolve.Mesh', compartments: Dict[int, Set[int]]) -> 'ngsolve.GridFunction':
     """
     Create a GridFunction which labels each element with the index of its compartment.
     Elements not in a compartment are labelled with NaN.
@@ -328,7 +326,7 @@ def cstrs_to_vtu_and_save_opencmp(
                         ],
         compartments:   Dict[int, Set[int]],
         config_parser:  ConfigParser,
-        mesh) -> None:
+        mesh: 'ngsolve.Mesh') -> None:
     """
     Takes a time series from running a simulation on the compartment network and outputs it to native OpenFOAM format.
     Each mesh cell is labelled based on which compartment it was a part of.
@@ -403,7 +401,7 @@ def pfrs_to_vtu_and_save_opencmp(system_results:    Tuple[
                                                         Dict[int, List[int]]],
                                  compartments:      Dict[int, Set[int]],
                                  config_parser:     ConfigParser,
-                                 mesh,
+                                 mesh:              'ngsolve.Mesh',
                                  n_vec: np.ndarray) -> None:
     """
     Takes a time series from running a simulation on the compartment network and outputs it to native OpenFOAM format.
@@ -536,9 +534,9 @@ def pfrs_to_vtu_and_save_opencmp(system_results:    Tuple[
 def _pfr_vtu_parallel_runner(
         y:                      np.ndarray,
         t:                      float,
-        gfu,
-        gfu_tmp,
-        mesh,
+        gfu:                    'ngsolve.GridFunction',
+        gfu_tmp:                'ngsolve.GridFunction',
+        mesh:                   'ngsolve.Mesh',
         compartment_to_pfr_map: Dict[int, List[int]],
         compartments:           Dict[int, Set[int]],
         n_avg_compartment:      np.ndarray,
@@ -618,7 +616,7 @@ def _pfr_vtu_parallel_runner(
     return ''.join(lines_for_pvd)
 
 
-def _linear_interpolant(d, d1: float, d2: float, v1: float, v2: float):
+def _linear_interpolant(d: 'ngsolve.CoefficientFunction', d1: float, d2: float, v1: float, v2: float) -> 'ngsolve.CoefficientFunction':
     """
     1st order interpolating CoefficientFunction between (d1, v1) and (d2, v2) as a function of d.
 
@@ -635,7 +633,7 @@ def _linear_interpolant(d, d1: float, d2: float, v1: float, v2: float):
     return (v2 - v1) / (d2 - d1) * (d - d1) + v1
 
 
-def _nearest_point_interpolant(d, d1: float, d2: float, v1: float, v2: float):
+def _nearest_point_interpolant(d: 'ngsolve.CoefficientFunction', d1: float, d2: float, v1: float, v2: float) -> 'ngsolve.CoefficientFunction':
     """
     Returns a CoefficienFunction which evaluates to either v1 or v2 based on if d is closer to d1 or d2.
     This will result in the values from the first and last degree of freedom in each PFR taking up 1/2 as much
@@ -677,13 +675,13 @@ def _nearest_point_interpolant(d, d1: float, d2: float, v1: float, v2: float):
     )
 
 
-def _piecewise_projected_results(basis_function:         Callable[[Any, float, float, float, float], Any],
+def _piecewise_projected_results(basis_function:         Callable[[Any, float, float, float, float], 'ngsolve.CoefficientFunction'],
                                  d_min_max_compartment:  np.array,
                                  values:                 np.ndarray,
                                  n_avg:                  np.ndarray,
                                  distance_for_points:    np.ndarray,
                                  points_per_pfr:         int,
-                                 pfrs_in_compartment:    List[int]):
+                                 pfrs_in_compartment:    List[int]) -> 'ngsolve.CoefficientFunction':
     """
     Take the simulation results for a given compartment and project them onto the 1D space whose dimension is
     the % of the compartments' volume.
@@ -745,7 +743,7 @@ def _piecewise_projected_results(basis_function:         Callable[[Any, float, f
     return f
 
 
-def restrict_function_domain(f, x, x_min: float, x_max: float, both_ends: bool = False):
+def restrict_function_domain(f: 'ngsolve.CoefficientFunction', x: float, x_min: float, x_max: float, both_ends: bool = False) -> 'ngsolve.CoefficientFunction':
     """
     Given a CoefficientFunction `f` returns it wrapped in IfPos calls such that f is evaluated
     only over the interval [x_min, x_max).
