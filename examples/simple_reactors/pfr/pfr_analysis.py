@@ -28,8 +28,6 @@ from openccm import run, ConfigParser
 # Save movie (transient solution simulation)?
 save_movie = False
 
-Path('analysis').mkdir(parents=True, exist_ok=True)
-
 # CFD simulation parameters and reaction rate constant
 Vs = 1
 tau = 10
@@ -126,8 +124,13 @@ for pointsPFR in [21, 101, 501]:
 		plt.ylim(y_lim)
 		plt.legend(loc='upper left')
 
-		plt.savefig(f"analysis/{plotnames[i]}_{pointsPFR}_points.png")
+		try:
+			plt.savefig(f"analysis/{plotnames[i]}_{pointsPFR}_points.png")
+		except:
+			os.mkdir("analysis")
+			plt.savefig(f"analysis/{plotnames[i]}_{pointsPFR}_points.png")
 		#plt.show()
+			
 		plt.close()
 
 	print('Inlet, midpoint, and outlet concentration plots saved.')

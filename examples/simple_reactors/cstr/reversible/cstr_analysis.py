@@ -98,5 +98,9 @@ for tolerance in [1e-3, 1e-7, 1e-10, 1e-13]:
 	plt.ylabel('Concentration [M]')
 	plt.title(f'(kf, kr) = ({kf:1.0e}, {kr:1.0e}) | rtol & atol={tolerance}')
 	plt.legend()
-	plt.savefig(f"analysis/tol_{tolerance}_kr_{kr:1.0e}_kf_{kf:1.0e}.png")
+	try:
+		plt.savefig(f"analysis/tol_{tolerance}_kr_{kr:1.0e}_kf_{kf:1.0e}.png")
+	except:
+		os.mkdir("analysis")
+		plt.savefig(f"analysis/tol_{tolerance}_kr_{kr:1.0e}_kf_{kf:1.0e}.png")
 	#plt.show()
