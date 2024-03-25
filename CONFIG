@@ -1,0 +1,107 @@
+# Values in [] represent default values
+
+[SETUP]
+# Number of CPU cores to use for: (1) loading the OpenCMP mesh and .sol file and (2) exporting the .vtu visualizations in parallel.
+num_cores           = [cpu_count()//2]
+# If debug logging should be performed, note that this severely hinders performance.
+DEBUG               = [False]
+# Path to the main directory for the compartmentalization.
+# Absolute or relative to the directory that the code is run from.
+# ALL OTHER PATHS ARE RELATIVE TO working_directory
+working_directory       = [./]
+# Path to the folder which will contain the outputs (will be made if it doesn't exist).
+output_folder_path  = [output_ccm/]
+# Path to the temporary cache folder (will be made if it doesn't exist).
+tmp_folder_path     = [tmp/]
+# Path to the logging folder (will be made if it doesn't exist).
+log_folder_path     = [log/]
+
+[INPUT]
+# Path to the config file used to generate the velocity profiles.
+opencmp_config_file_path    = config_INS
+# Path to the solution file for the steady-state velocity profile.
+opencmp_sol_file_path       = output/ins_sol/ins_0.0.sol
+# Path to the OpenFOAM timestep results folders, the folder representing the latest simulated time will be used from here.
+openfoam_sol_folder_path = ./
+# File name, within the latest timestep folder, containing the velocity vector to be used.
+openfoam_velocity_file_name = U
+# Number of times to refine the mesh by splitting before projecting.
+# The higher order FES results onto 0th order elements.
+num_refinements     = [1]
+# When calculating velocity direction, velocity vectors with a magnitude below this value are treated as the zero-vector.
+min_magnitude_threshold  = [0]
+# Which of the BCs, if any, represent domain inlets/outlet.
+domain_inlet_names  = ("inlet",)
+domain_outlet_names = ("outlet",)
+# Which of the BCs, if any, represent no-flux BCs.
+no_flux_names       = ("wall")
+# Which of the BCs, if any, should be handled as regular connection (e.g. those used for periodic BCs, or zero gradients)
+ignored_names       = None
+
+[COMPARTMENTALIZATION]
+# Name of which BCs, if any, to use as the initial seeds for compartmentalization.
+bc_names_for_seeds  = ("inlet",)
+# The maximum allowable difference in angle, in degrees, between the direction vector of the seed element and a prospective element.
+angle_threshold         = [5]
+# The minimum percentage of element A's total flow which goes from A to B for B to be considered 'downstream-enough' of A.
+flow_threshold          = [45]
+# The minimum allowable size for each compartment.
+min_compartment_size    = 0.05
+
+[COMPARTMENT MODELLING]
+# Whether to use PFRs-in-series or a CSTR to model each compartment.
+model                   = PFR
+# Volumetric flow threshold through a single facet below which the flow is considered 0.
+flow_threshold_facet    = [1e-15]
+# Volumetric flow threshold through a surface below which the flow is considered 0.
+flow_threshold          = [1e-15]
+# Maximum allowable difference (in % of compartment volume) between connections for merging them to one location.
+dist_threshold          = [5 / 100]
+# Relative and absolute tolerances for checking that conservation of mass for the liquid after the flow optimization is performed.
+rtol_opt                = [0]
+atol_opt                = [1e-2]
+
+[SIMULATION]
+# If a simulation should be performed on the resulting compartmental model.
+run                 = [True]
+# Time range for simulation.
+t_span              = 0, 100
+# Initial time-step, needed since the solver has issues with time-varying BCs otherwise.
+first_timestep      = [0.0001]
+# If using PFRs this the number of discretization points per PFR (must be at least 2).
+points_per_pfr      = [2]
+# Which time integration scheme to use
+solver              = [LSODA]
+# Relative and absolute tolerance for the adaptive time-stepping.
+rtol                = [1e-6]
+atol                = [0.0]
+# The name of the different species to simulate, each seperated by a comma. Must be at least 1 if run = True.
+specie_names        = a, b
+# Path to the file containing the reactions to simulate, if not specified than the simulations will be for inert species.
+reactions_file_path = [CONFIG_REACTIONS]
+# Initial conditions for running the simulation.
+initial_conditions  =   a: -> ic_value_1
+                        b: -> ic_value_2
+# BCs used for simulations to specify which boundaries the BC conditions are applied on.
+boundary_conditions =   a: inlet   -> 1
+                        a: inlet_2 -> 0
+                        b: inlet   -> 0
+
+[POST-PROCESSING]
+# Whether or not to save the simulation results to file.
+save_to_file    = [True]
+# Whether or not to map compartmental model back onto the 2D/3D mesh and save to VTK.
+output_VTK      = [False]
+# Folder in which to save the VTU visualizations
+vtu_dir         = [compartment_pfr_vtu/]
+# If an RTD should be calculated between inlet_bc_name and outlet_bc_name.
+calculate_rtd   = [False]
+# These values only have to be specified if calculate_rtd = True.
+inlet_bc_name   = [inlet]
+outlet_bc_name  = [outlet]
+# If a diagram of the CSTR/PFR network should be generated.
+network_diagram = [True]
+# The number of subdivisions of the mesh when exporting to VTK.
+subdivisions    = [0]
+# The order of the interpolant to use when projecting the PFR results back on the final mesh.
+interpolant_order = [1]
