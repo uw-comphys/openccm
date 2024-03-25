@@ -125,10 +125,10 @@ for pointsPFR in [21, 101, 501]:
 		plt.legend(loc='upper left')
 
 		try:
-			plt.savefig(f"analysis/{plotnames[i]}_{pointsPFR}_points.png")
+			plt.savefig(f"analysis/pfr_{plotnames[i]}_{pointsPFR}_points.png")
 		except:
 			os.mkdir("analysis")
-			plt.savefig(f"analysis/{plotnames[i]}_{pointsPFR}_points.png")
+			plt.savefig(f"analysis/pfr_{plotnames[i]}_{pointsPFR}_points.png")
 		#plt.show()
 			
 		plt.close()
@@ -167,9 +167,9 @@ for pointsPFR in [21, 101, 501]:
 			ext = 'gif'
 
 		ani = animation.FuncAnimation(fig, animate, frames=range(len(t_vec)))
-		ani.save(f"analysis/transient_{pointsPFR}_points.{ext}", writer, dpi=300)
+		ani.save(f"analysis/pfr_transient_{pointsPFR}_points.{ext}", writer, dpi=300)
 
 		plt.close()
-		print(f'Transient animation saved as transient_{pointsPFR}_points.{ext} in analysis/.')
+		print(f'Transient animation saved in analysis/pfr_transient_{pointsPFR}_points.{ext}.')
 	else:
-		print('Transient movie simulation not created as directed by pfr_analysis.py.')
+		print('Transient movie simulation not created as directed by user.')

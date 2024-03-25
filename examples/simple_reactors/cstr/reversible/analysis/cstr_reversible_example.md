@@ -102,11 +102,11 @@ $$ k_r = 1 \times 10^{-4} s^{-1} $$
 Note that these constants were chosen arbitrarily to represent a system with dominant $A$ concentration over $B$ production. 
 Additionally, although stricter tolerances result in larger number of simulation timesteps, this is accounted for in the error equation (normalization by $N$).
 
-![](images/cstr_reversible_tol_1e-03_small_k.png)
-![](images/cstr_reversible_tol_1e-07_small_k.png)
+![](cstr_reversible_tol_1e-03_small_k.png)
+![](cstr_reversible_tol_1e-07_small_k.png)
 
-![](images/cstr_reversible_tol_1e-10_small_k.png)
-![](images/cstr_reversible_tol_1e-13_small_k.png)
+![](cstr_reversible_tol_1e-10_small_k.png)
+![](cstr_reversible_tol_1e-13_small_k.png)
 
 ### Simulation for Large $k$
 
@@ -117,11 +117,11 @@ $$ k_r = 1 s^{-1} $$
 Note that these constants were chosen arbitrarily to represent a system with near-equal steady state $A$ and $B$ concentrations. 
 Additionally, although stricter tolerances result in larger number of simulation timesteps, this is accounted for in the error equation (normalization by $N$).
 
-![](images/cstr_reversible_tol_1e-03_large_k.png)
-![](images/cstr_reversible_tol_1e-07_large_k.png)
+![](cstr_reversible_tol_1e-03_large_k.png)
+![](cstr_reversible_tol_1e-07_large_k.png)
 
-![](images/cstr_reversible_tol_1e-10_large_k.png)
-![](images/cstr_reversible_tol_1e-13_large_k.png)
+![](cstr_reversible_tol_1e-10_large_k.png)
+![](cstr_reversible_tol_1e-13_large_k.png)
 
 ## Conclusions
 

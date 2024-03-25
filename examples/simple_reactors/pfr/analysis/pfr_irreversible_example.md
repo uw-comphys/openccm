@@ -110,9 +110,9 @@ The solution vectors $sol^a$ (analytical) and $sol^n$ (OpenCCM) use the same spe
 The error between these two solutions for a species computed at each timestep $i$ for $N$ total timesteps is a normalized absolute error:
 $$ err = \frac{\sum_i^N \lvert sol^a_i - sol^n_i \rvert}{N} $$
 
-![](images/pfr_outlet_21_points.png)
-![](images/pfr_outlet_101_points.png)
-![](images/pfr_outlet_501_points.png)
+![](pfr_outlet_21_points.png)
+![](pfr_outlet_101_points.png)
+![](pfr_outlet_501_points.png)
 
 ## Conclusions
 

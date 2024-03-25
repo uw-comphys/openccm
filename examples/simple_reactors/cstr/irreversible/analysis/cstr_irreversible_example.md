@@ -89,11 +89,11 @@ $$ err = \frac{\sum_i^N \lvert sol^a_i - sol^n_i \rvert}{N} $$
 Simulations were run using varying tolerances of 1e-3, 1e-7, 1e-10, and 1e-13 for both absolute and relative tolerances.
 Additionally, although stricter tolerances result in larger number of timesteps, this is accounted for in the error equation (normalization by $N$).
 
-![](images/cstr_irreversible_tol_1e-03.png)
-![](images/cstr_irreversible_tol_1e-07.png)
+![](cstr_irreversible_tol_1e-03.png)
+![](cstr_irreversible_tol_1e-07.png)
 
-![](images/cstr_irreversible_tol_1e-10.png)
-![](images/cstr_irreversible_tol_1e-13.png)
+![](cstr_irreversible_tol_1e-10.png)
+![](cstr_irreversible_tol_1e-13.png)
 
 ## Conclusions
 

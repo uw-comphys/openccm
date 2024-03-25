@@ -104,8 +104,8 @@ for tolerance in [1e-3, 1e-7, 1e-10, 1e-13]:
 	plt.text(1.5,1.5,textstr)
 	plt.legend()
 	try:
-		plt.savefig(f"analysis/tol_{tolerance}.png")
+		plt.savefig(f"analysis/cstr_irreversible_tol_{tolerance}.png")
 	except:
 		os.mkdir("analysis")
-		plt.savefig(f"analysis/tol_{tolerance}.png")
+		plt.savefig(f"analysis/cstr_irreversible_tol_{tolerance}.png")
 	#plt.show()
