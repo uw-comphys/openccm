@@ -15,6 +15,8 @@
 # <https://www.gnu.org/licenses/>.                                                                                     #
 ########################################################################################################################
 
+import os
+import sys
 from typing import Tuple, Dict, List, Optional, Callable
 
 import numpy as np
@@ -82,10 +84,8 @@ def load_and_prepare_bc_ic_and_rxn(config_parser:       ConfigParser,
 
     c0 = c0.ravel()  # Required since solve_ivp needs 1D array
 
-    import sys
-
     # Add working directory to path so that imports can be found
-    working_directory_abs_path = sys.path[0] + '/' + config_parser.get_item(['SETUP', 'working_directory'], str)
+    working_directory_abs_path = os.getcwd() + '/' + config_parser.get_item(['SETUP', 'working_directory'], str)
     sys.path.append(working_directory_abs_path)
 
     # If the reaction module has previous been imported, need to remove it for the import statement to do anything.
