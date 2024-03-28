@@ -138,7 +138,7 @@ def create_boundary_conditions(c0:                  np.array,
     if need_time_deriv_version:
         for bc_id, species_dict in bc_dict_for_c0.items():
             for specie, bc_eqn in species_dict.items():
-                np.add.at(c0[specie_names.index(specie)], points_for_bc[bc_id], Q_weights[bc_id]) * float(bc_eqn.evalf(subs={'t': t0}))
+                np.add.at(c0[specie_names.index(specie)], points_for_bc[bc_id], np.array(Q_weights[bc_id]) * float(bc_eqn.evalf(subs={'t': t0})))
 
     bcs_names_used = sorted(bcs_names_used)  # Convert to list to keep order consistent
 
