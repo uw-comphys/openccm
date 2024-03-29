@@ -1,0 +1,34 @@
+[MESH]
+filename = v=1.msh
+curved_elements = False
+
+[FINITE ELEMENT SPACE]
+elements = u -> VectorH1
+           p -> H1
+interpolant_order = 3
+
+[DG]
+DG = False
+
+[SOLVER]
+solver = CG
+preconditioner = default
+linearization_method = Oseen
+nonlinear_tolerance = relative -> 0
+                      absolute -> 2e-5
+nonlinear_max_iterations = 100
+
+[TRANSIENT]
+transient = False
+
+[VISUALIZATION]
+save_to_file = True
+save_type = .vtu
+save_frequency = 5, numit
+split_components = True
+
+[OTHER]
+model = Stokes
+run_dir = .
+num_threads = 1
+messaging_level = 20

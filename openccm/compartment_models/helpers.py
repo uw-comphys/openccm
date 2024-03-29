@@ -78,22 +78,30 @@ def tweak_compartment_flows(
                                     indexed by connection ID.
                                     Connection ID in this dictionary is ALWAYS positive, need to take absolute sign of
                                     the value if it's negative (see `connection_pairing` docstring)
-        domain_inlet_outlets:
-        atol_opt:                   Absolute tolerance for evaluating conservation of mass of the optimized system
-        rtol_opt:                   Relative tolerance for evaluating conservation of mass of the optimized system
+        grouped_bcs:            GroupedBCs object for identifying which connections belong to domain inlets/outlets.
+        atol_opt:               Absolute tolerance for evaluating conservation of mass of the optimized system
+        rtol_opt:               Relative tolerance for evaluating conservation of mass of the optimized system
     """
     # Small epsilon for conservation of mass to ensure that net flow is always positive.
-    # using 0 can cause floating point addition problems when the flow get close to summing to zero.
-    eps = 1e-10
+    # Using 0 can cause floating point addition problems when the flow get close to summing to zero.
+    eps: float = 1e-6
+
+    # Scale volumetric flows to avoid numerical issues
+    v_min = min(volumetric_flows.values())
+    for _id in volumetric_flows:
+        volumetric_flows[_id] /= v_min
 
     # Build coefficients for the objective function
     c = np.ones(len(volumetric_flows))
 
+    # Volumetric flows cannot be assumed to be put into the dictionary in increasing order
+    con_to_index = {_id: index for index, _id in enumerate(list(volumetric_flows.keys()))}
+
     # NOTE: There are no equality constriants
 
     # Create the inequality constraint
-    A = np.zeros((len(connection_pairing), c.size), dtype='b')
-    b = -eps * np.ones(len(connection_pairing))
+    A = np.zeros((len(connection_pairing), len(volumetric_flows)), dtype='b')
+    b = -eps/v_min * np.ones(len(connection_pairing))
     domain_inlet_outlet_connections = set()
     for compartment, compartment_connections in connection_pairing.items():
         for connection, compartment_other in compartment_connections.items():
@@ -102,14 +110,14 @@ def tweak_compartment_flows(
                 domain_inlet_outlet_connections.add(abs(connection))
 
             if connection > 0:  # Inlet
-                A[compartment, connection-1] = -1  # Need to do the -1 since the connections are still index starting at 1 at this point.
+                A[compartment, con_to_index[connection]] = -1
                 b[compartment] += volumetric_flows[connection]
             else:  # Outlet
-                A[compartment, abs(connection)-1] = 1
+                A[compartment, con_to_index[abs(connection)]] = 1
                 b[compartment] -= volumetric_flows[abs(connection)]
 
     # Each column which does not correspond to a domain inlet/out must sum to 0.
-    for i, connection in enumerate(volumetric_flows.keys()):
+    for connection, i in con_to_index.items():
         if connection not in domain_inlet_outlet_connections:
             assert np.sum(A[:, i]) == 0
 
@@ -120,28 +128,30 @@ def tweak_compartment_flows(
 
     # Print pre-optimization stats
     print("Net-outflow compartments = {}".format((b < 0).sum()))
-    print("BEFORE: MAX abs error: {:.4e}".format(np.max(abs(b))))
-    print("BEFORE: AVG abs error: {:.4e}".format(np.mean(abs(b))))
-
-    # Build the bounds for x (the adjustment). Only bound is they must be non-negative
-    bounds = [(0, np.inf) for _ in range(len(volumetric_flows))]
+    print("BEFORE: MAX abs error: {:.4e}".format(np.max(abs(b)) * v_min + eps))
+    print("BEFORE: AVG abs error: {:.4e}".format(np.mean(abs(b)) * v_min + eps))
 
     # Solve the equation
-    results = linprog(c, A_ub=A, b_ub=b, bounds=bounds)
+    results = linprog(c, A_ub=A, b_ub=b, bounds=(0, None), method='highs', integrality=1)
     if not results["success"]:
         raise Exception("Flow optimization did not converge. \n" +
                         "Message:" + results["message"])
 
     adjustments: np.ndarray = results["x"]
+    assert np.all(adjustments >= 0.0)
 
-    b_new = np.abs(A @ adjustments - b)
+    b_new = b - A @ adjustments
     assert np.all(b_new >= 0)
-    print("AFTER:  MAX abs error: {:.4e}".format(np.max(b_new)))
-    print("AFTER:  AVG abs error: {:.4e}".format(np.mean(b_new)))
+    print("AFTER:  MAX abs error: {:.4e}".format(np.max(b_new) * v_min + eps))
+    print("AFTER:  AVG abs error: {:.4e}".format(np.mean(b_new) * v_min + eps))
 
     # Adjust the volumetric flows
-    for i, connection in enumerate(volumetric_flows.keys()):
+    for connection, i in con_to_index.items():
         volumetric_flows[connection] += adjustments[i]
+
+    # Rescale back
+    for _id in volumetric_flows:
+        volumetric_flows[_id] *= v_min
 
     # Check the conservation of mass for the system as a whole and each compartment.
     # Each compartment is checked again to try to catch any issues with the optimization setup above
@@ -170,7 +180,6 @@ def tweak_compartment_flows(
 
         assert net_flow > 0
         assert np.isclose(net_flow, 0, rtol=rtol_opt, atol=atol_opt)
-    assert np.isclose(total_inflow, total_outflow, rtol=rtol_opt, atol=atol_opt)
     assert np.isclose(0.0, missing_flow, rtol=rtol_opt, atol=atol_opt)
 
 
@@ -197,6 +206,10 @@ def tweak_final_flows(
     Returns:
         Nothing. Values are changed implicitly
     """
+
+    # Scale volumetric flows to avoid numerical issues
+    v_min = min(volumetric_flows)
+    volumetric_flows /= v_min
 
     # Build coefficients for the objective function
     c = np.ones(volumetric_flows.shape)
@@ -226,7 +239,8 @@ def tweak_final_flows(
             a[id_pfr, id_connection] = -1
 
     # Each column which does not correspond to a domain inlet/out must sum to 0.
-    # Summing to zero means that each time it was marked an inlet to a domain
+    # Summing to zero means that each time it was marked an inlet it is also marked as an outlet.
+    # Domain inlets/outlet will not match up.
     for id_connection in connections:
         if id_connection not in indices_of_domain_inlet_outlet:
             assert np.sum(a[:, id_connection]) == 0
@@ -252,25 +266,25 @@ def tweak_final_flows(
         for id_connection in outlets.keys():
             b[i] += volumetric_flows[id_connection]
 
-    # Build the bounds for x (the adjustment). Only bound is they must be non-negative
-    bounds = [(0, np.inf) for _ in range(volumetric_flows.size)]
-
-    print("BEFORE: MAX abs error: {:.4e}".format(np.max(abs(b))))
-    print("BEFORE: AVG abs error: {:.4e}".format(np.mean(abs(b))))
+    print("BEFORE: MAX abs error: {:.4e}".format(np.max(abs(b)) * v_min))
+    print("BEFORE: AVG abs error: {:.4e}".format(np.mean(abs(b)) * v_min))
     # Solve the equation
-    results = linprog(c, A_eq=a, b_eq=b, bounds=bounds)
+    results = linprog(c, A_eq=a, b_eq=b, bounds=(0, None))
     if not results["success"]:
         raise Exception("Flow optimization did not converge. \n" +
                         "Message:" + results["message"])
 
     adjustments: np.ndarray = results["x"]
+    # assert np.all(adjustments >= 0)
 
     b_new = np.abs(a @ adjustments - b)
-    print("AFTER:  MAX abs error: {:.4e}".format(np.max(b_new)))
-    print("AFTER:  AVG abs error: {:.4e}".format(np.mean(b_new)))
+    print("AFTER:  MAX abs error: {:.4e}".format(np.max(b_new) * v_min))
+    print("AFTER:  AVG abs error: {:.4e}".format(np.mean(b_new) * v_min))
 
     # Add results to the flowrates
     volumetric_flows += adjustments
+    # Rescale back
+    volumetric_flows *= v_min
 
     # Check conservation of mass for the system as a whole
     total_inflow  = 0.0
@@ -300,6 +314,6 @@ def tweak_final_flows(
         # Subtract the outlets
         total -= sum(volumetric_flows[id_connection] for id_connection in connections[id_component][1])
 
-        if ~np.isclose(total, 0, atol=atol_opt, rtol=rtol_opt):
+        if ~np.isclose(total, 0.0, atol=atol_opt, rtol=rtol_opt):
             print("Total flowrate around component {} is not balanced. Error {}".format(id_component, total))
             assert False

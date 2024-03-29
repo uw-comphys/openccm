@@ -18,7 +18,6 @@ from collections import defaultdict
 from typing import Dict, List, Optional, Tuple, Set
 
 import scipy.optimize as optimize
-import matplotlib.pyplot as plt
 import numpy as np
 
 from ..config_functions import ConfigParser
@@ -108,6 +107,13 @@ def plot_results(system_results:    Tuple[
     Args:
 
     """
+    try:
+        import matplotlib.pyplot as plt
+    except ModuleNotFoundError:
+        print("The optional package `Matplotlib` was not installed, cannot visualize the network. "
+              "Install using `pip install matplotlib`.")
+        return
+
     print('Start plotting results')
 
     id_inlet  = c_mesh.grouped_bcs.id(config_parser.get_item(['POST-PROCESSING', 'inlet_bc_name'],  str))
@@ -182,8 +188,6 @@ def visualize_model_network(model_network:  Tuple[
         n:              Direction vector as a numpy array where the ith row represents the ith mesh element.
         config_parser:  OpenCCM ConfigParser used for parameters.
     """
-    print("Visualizing model network")
-
     try:
         import networkx as nx
     except ModuleNotFoundError:
@@ -196,6 +200,8 @@ def visualize_model_network(model_network:  Tuple[
         print("The optional package `Matplotlib` was not installed, cannot visualize the network. "
               "Install using `pip install matplotlib`.")
         return
+
+    print("Visualizing model network")
 
     connection, _, _, compartment_to_model_map = model_network
 
