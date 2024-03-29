@@ -29,8 +29,8 @@ bibliography: paper.bib
 
 # Summary
 
-OpenCCM is a compartmental modelling software package based on flow alignment [@Vasile2024]. It is primarily intended for flow-based processes where there is a weak coupling between any reactions and the flow in the system. OpenCCM 
-integrates with both OpenCMP [@Monte2022] and OpenFOAM [@OpenFOAM] allowing for easy movement of data between this package and either of those. Additionally, it provides users with built-in functionality for calculating residence times, exporting to re-import into simulation software, and for exporting results for visualization using ParaView [@Ahrens2005].
+OpenCCM is a compartmental modelling REF software package based on flow alignment [@Vasile2024]. It is primarily intended for flow-based processes where there is a weak coupling between composition changes, e.g. through (bio)chemical reactions, and convective mass transport in the system. OpenCCM
+integrates with two simulation software packages, OpenCMP [@Monte2022] and OpenFOAM [@OpenFOAM], allowing for ease of transfering simulation data. Additionally, it provides users with built-in functionality for calculating residence times, exporting to re-import into simulation software, and for exporting results for visualization using ParaView [@Ahrens2005].
 
 OpenCCM development follows the principles of ease of use, performance, and extensibility. The configuration file-based user interface is intended to be concise, readable, and intuitive. Furthermore, the code base is structured and documented [@Vasile2024] and uses an internal mesh representation such that experienced users can add input-output bindings for their packages (e.g. FEniCS or ANSYS) with no modifications required to the main compartmental modelling code.
 
