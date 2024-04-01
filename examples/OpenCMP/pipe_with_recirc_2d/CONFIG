@@ -18,18 +18,22 @@ model = PFR
 
 [SIMULATION]
 run                 = True
-t_span              = 0, 500_000
+t_span              = 0, 300
 points_per_pfr      = 2
-specie_names        = a, b, c
-reactions_file_path = reactions
+specie_names        = a, b, c, d
+;reactions_file_path = reactions
 initial_conditions  = a -> 0
                       b -> 0
                       c -> 0
-boundary_conditions = a: inlet -> H(t)
-                      b: inlet -> 0
+                      d -> 0
+boundary_conditions = a: inlet -> 1
+                      b: inlet -> 1
                       c: inlet -> 0
+                      d: inlet -> 0
 
 [POST-PROCESSING]
 inlet_bc_name          = inlet
 outlet_bc_name         = outlet
-output_VTK             = True
+output_VTK             = False
+calculate_rtd          = False
+plot_results           = True

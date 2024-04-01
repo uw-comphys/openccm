@@ -74,7 +74,11 @@ The overall aim of `OpenCCM` is to fill this need for an open-source compartment
 | Performance             | Multi-threading                                                                   |
 |                         | Caching of intermediary results to speed-up subsequent runs                       |
 
-Writing unit tests against an exact output is very difficult for a variety of reasons. First the method is inherently an approximation of the CFD simulation leading to expected differences between the original CFD result and the approximation. Further, while the method is automated it is nevertheless quite descriptive, providing criteria that the final result will meet and is sensitive to initial conditions, though the differing final results all have comparable performance. Thus, the majority of the software testing is provided through the use of extensive use of in-line asserts checking and enforcing of invariants and required properties at the beginning and end of most functions. The reaction system is tested against several analytic solutions, see the examples sections for more information.
+Testing of the package is accomplished using a variety of methods. The core functions of the package all feature asserts on their output to ensure that expected properties are met and invariants are preserved. These assert are run all the time, rather than only for tests, allowing for errors to be caught and localized sooner. Unit tests are added to functions as issues arise, however the nature of the method makes larger scale testing challenging. The method identifies compartments such that they satisfy certain properties, mainly that they represent unidirectional flow, and so while it is deterministic, it is sensitive to the mesh and to the initial seeds. Thus, several different, but interchangeable, compartment networks can be produced from the same CFD simulation. Aside from trivial flow profiles and meshes, it is not feasible to predict the resulting compartmentalization to the degree needed for tests; we can predict ahead what the general shape of the compartments should be, but we cannot predict how many compartments there will be nor which mesh elements belong to a specific compartment.   
+
+Examples are included which compare concretely measurable predictions, e.g. residence time distribution, between the CFD and compartmental model. However, since this method is inherently a coarse-grained approximation of the CFD, exact results are not expected.  
+
+The reaction handling system features several example which double as integration tests that compare the OpenCCM simulation results to analytic solutions. 
 
 # User Interface
 
@@ -88,19 +92,9 @@ For `OpenFOAM`, two directories are required:
 The path to the solution directory is specified in the `OpenCCM` config, and the `constant` directory is assumed to be in the same parent folder.
 
 After running, `OpenCCM` will create several directories:
-* `.log` directory which contains detailed debugging information, if debug logging is enabled, about each step of the compartment modelling process.
-* `.tmp` directory which contains intermediary files used for speeding up subsequent runs of the model. This includes the mesh and velocity vector fields converted to the intermediary format as well as the network of PFRs/CSTRs.
-* `ouput_ccm` directory which contains `ParaView` files for visualizing the compartments as well as the simulation results from the compartment model, both in numpy format for further analysis and in either ParaView format or the native format of the simulation package that was originally used.
-
-# Examples of Usage
-
-Several examples are provided, which for the time being are all in 2D. These examples show the handling of both OpenCMP and OpenFOAM simulation results, as well as creating both PFR-based and CSTR-based compartmental models.
-The geometry used in [@Vasile2024] is reproduced in both OpenCMP and OpenFOAM under the `OpenCMP/pipe_with_recirc_2d` and `OpenFOAM/pipe_with_recic` directories, respectively.
-
-Also included in the `examples/simple_reactors` folder are two of the files needed to run OpenCMP-simulation based single CSTR and single PFR models for various reaction systems.
-These two examples act as tutorials for how to imput reactions and a convergence/error analysis for linear, non-linear, coupled, and reversible reaction systems in CSTRs and/or PFRs.
-
-Two specific examples using the implemented single CSTR and single PFR compartment models are discussed below in addition to a brief description of the custom reactions configuration file parser developed for `OpenCCM`.
+* `log` directory which contains detailed debugging information, if debug logging is enabled, about each step of the compartment modelling process.
+* `cache` directory which contains intermediary files used for speeding up subsequent runs of the model. This includes the mesh and velocity vector fields converted to the intermediary format as well as the network of PFRs/CSTRs.
+* `ouput_ccm` directory which contains ParaView files for visualizing the compartments as well as the simulation results from the compartment model, both in numpy format for further analysis and in either ParaView format or the native format of the simulation package that was originally used.
 
 # Reaction Configuration File
 
@@ -125,7 +119,7 @@ The parser does not have a preference for the ordering of the configuration file
 
 ## Example Configuration
 
-Suppose the reversible reaction `2NaCl + CaCO3 <-> Na2CO3 + CaCl2` with `k_f = 5e-2` and `k_r` = 2 is used for simulations. These species must first be redefined in simple terms in agreement with the reactions parser, i.e. a = NaCl, b = CaCO3, c = Na2CO3, and d = CaCl2. A configuration file for this reversible reaction may then be:
+Suppose the reversible reaction `2NaCl + CaCO3 <-> Na2CO3 + CaCl2` with `k_f = 5e-2` and `k_r = 2` is used for simulations. These species must first be redefined in simple terms in agreement with the reactions parser, i.e. a = NaCl, b = CaCO3, c = Na2CO3, and d = CaCl2. A configuration file for this reversible reaction may then be:
 
     [REACTIONS]
     R1: 2a + b -> c + d
@@ -137,75 +131,48 @@ Suppose the reversible reaction `2NaCl + CaCO3 <-> Na2CO3 + CaCl2` with `k_f = 5
 
 where **R1** and **R2** are the reaction *identifiers* for the forward and reverse reactions respectively.
 
-Multiple examples with different reactions have been developed for `OpenCCM`. Two specific examples using the CSTR and PFR compartment model implementations are summarized here.
+Multiple examples with different reactions have been developed for `OpenCCM`.
 
-# CSTR Example: Reversible Linear Reaction
+# Examples of Usage
 
-This example demonstrates a mass balance simulation of `OpenCCM`'s CSTR simple reactor using a reversible linear chemical reaction. The files for this example can be found [here](https://github.com/uw-comphys/`OpenCCM`/tree/main/examples/simple_reactors).
+Several examples are provided, which for the time being are all in 2D. These examples show the handling of both OpenCMP and OpenFOAM simulation results, as well as creating both PFR-based and CSTR-based compartmental models.
+The geometry used in [@Vasile2024] is reproduced in both OpenCMP and OpenFOAM under the `OpenCMP/pipe_with_recirc_2d` and `OpenFOAM/pipe_with_recic` directories, respectively.
 
-## Mass Balance System
+Also included in the `examples/simple_reactors` folder are the files needed to run OpenCMP-based single CSTR and single PFR models for various reaction systems.
+These two examples act as tutorials for how to input reactions and a convergence/error analysis for linear, non-linear, coupled, and reversible reaction systems.
 
-Suppose we have the following reversible linear reaction: $$ A \leftrightarrow B$$ with first-order kinetic rate constants $k_f$ and $k_r$ for the forward and reverse reactions (respectively).
+Below is an in-depth example, following along with [@Vasile2024], of the example in `examples/OpenCMP/pipe_with_recirc_2d` on how to run the CFD simulation, create and visualize the compartmental model, compare the RTD of the CFD and compartmental model, and finally demonstrate simulating a set of reactions on the compartment network.
 
-Noting that $C(t) = A(t) + B(t)$ is an expression for the total conservation of mass, the total initial condition and inlet feed rate can be expressed as $C_0 = A_0 + B_0$ and $C_{IN} = A_{IN} + B_{IN}$ respectively.
+## Hydrodynamics and Compartmental Model
+The steady-state hydrodynamic flow-profile is obtained by running the OpenCMP simulation through the `run_opencmp.py` script in the folder. The resulting flow profile was opened in ParaView and the line integral convolution of the velocity field is shown below, colored by velocity magnitude.
+![Surface LIC of CFD hydrodynamics](images/lic_domain.png){ width=80% }
 
-A full derivation of the transient mass balance equations is available [here](TODO-REF-LINK).
-For brevity, the equations are stated here:
+The underlying velocity field data was then processed by OpenCCM to produce a network of compartments by using the `run_compartment.py` script. The figure below, again visualized with ParaView, shows each element of the original mesh colored according to the compartment it belongs to.
+![Labelled Compartments.](images/labelled_compartments.png){ width=80% }
 
-$$ C(t) = C_{IN} + (C_0 - C_{IN}) e^{-t/\tau} $$
-$$ A(t) = A_0e^{-\alpha^m t} + \frac{\left(k_r C_{IN} + A_{IN}/\tau \right)}{\alpha^m}\left(1-e^{-\alpha^m t} \right) + \frac{k_r(C_0 - C_{IN})}{\alpha^m - 1/\tau}\left(e^{-t/ \tau}-e^{-\alpha^m t} \right) $$
-and therefore
-$$ B(t) = C(t) - A(t) $$
-where $\tau = \frac{V}{Q}$ is the ratio of the constant volume to volumetric feed rate ($Q$), $\alpha = -k_f - 1/\tau$ is a constant, and $P_{IN}$ and $P_0$ represent the inlet feed rate and initial condition for species $P$ (respectively).
+That network of compartments is further processed as each compartment is represented by a series of plug flow reactors (PFRs). The resulting network (graph) of PFRs is shown in the figure below; nodes are the centers of the PFRs and edges are connections (flows) between PFRs. 
+![Network of PFRs.](images/compartment_network.pdf){ width=80% }
 
-## Simulation Setup
+## RTD Curves
+The Residence Time Distribution (RTD) curve for both the CFD and Compartmental Model (CM) are calculated using the script in the supplementary material of [@Vasile2024].
+![Residence time distribution curves between CFD and CM.](images/e(t)_for_cfd_vs_pfr.pdf){ width=80% }
 
-The example directory has three main files:
-* **CONFIG** - specifies many input and simulation parameters, such as the compartment model, initial conditions, and inlet feed rates (referred to as boundary conditions in the configuration file).
-* **reactions** - specifies the reactions involved in the system along with their associated kinetic rate constants.
-* **cstr_analysis.py** - contains the code necessary to run this example.
+## Reactions
+Finally, to demonstrate how to use the reaction system we will implement the reversible reaction system mentioned above: `2NaCl + CaCO3 <-> Na2CO3 + CaCl2` with `k_f = 5e-2` and `k_r = 2` with a = NaCl, b = CaCO3, c = Na2CO3, and d = CaCl2. The initial conditions are 0 for all species and the boundary conditions at the inlet are `[NaCl] = [CaCO3] = 1` and `[Na2CO3] = [CaCl2] = 0`. The equations and conditions have already been specified, enable the reactions by uncommenting the `;reactions_file_path = reactions` line by removing the ';' at the start of the line. Note that when you re-run the compartmentalization it will finish much faster than the first time, this is because the compartmental model does not have to be re-created, instead it is loaded from disk.
 
-This example will use the previously described reaction system with initial conditions and inlet feed rates as follows (units of [M]):
-$$ A_{0} = 0 $$
-$$ B_{0} = 0 $$
-$$ A_{IN} = 1 $$
-$$ B_{IN} = 0 $$
+To analyze the results, the equilibrium values for this reversible system are calculated as follows:
+$$ k_f [a]^2[b] = k_r [c][d] $$
+$$ \frac{k_f}{k_r} = \frac{[c][d]}{[a]^2[b]} $$
+$$ \frac{5 \times 10^{-2}}{2} = \frac{(x)(x)}{x(1-2x)^2} $$
+$$ x \approx 0.1147 $$
+Where `x` is the number of moles produced of each product.
 
-and reaction rate constants of $k_f = k_r = 1$ $s^{-1}$. The code in **cstr_analysis.py** is setup to run this simulation for various absolute and relative simulation tolerances: 1e-3, 1e-7, 1e-10, and 1e-13. After running this Python file, the output is:
+The expected equilibrium concentrations for the four species are: `[NaCl]_{ss} = 0.7706`, `[CaCO3] = 0.8853`, `[Na2CO3] = 0.1147`, and `[CaCl2] = 0.1147`. Based on the figures below, and from opening up the results, it can be seen that these steady state values are obtained at the outlet of the reactor.
 
-![CSTR Reversible Linear Reaction Output.\label{fig:cstr_reversible}](images/cstr_reversible_large_k.png){ width=80% }
+![Input/Output Concentrations for 'a'.](images/system_response_a.pdf){ width=49% } ![Input/Output Concentrations for 'b'.](images/system_response_b.pdf){ width=49% }
+![Input/Output Concentrations for 'c'.](images/system_response_c.pdf){ width=49% } ![Input/Output Concentrations for 'd'.](images/system_response_d.pdf){ width=49% }
 
-# PFR Example: Irreversible Linear Reaction
-
-This example demonstrates a mass balance simulation of `OpenCCM`'s PFR simple reactor using an irreversible linear chemical reaction. The files for this example can be found [here](https://github.com/uw-comphys/`OpenCCM`/tree/main/examples/simple_reactors).
-
-## Mass Balance System
-
-Suppose we have the following irreversible linear reaction: $$ a \rightarrow 2b $$ with a first-order kinetic rate constant $k = 0.1$ $s^{-1}$.
-
-A full derivation of the transient mass balance equations is available [here](TODO-REF-LINK) and makes good use of the Laplace Transform ($\mathscr{L}$). For brevity, the equations are stated here:
-
-$$ a(V, t) = a_0 e^{-kt}(1-H(t-V/Q)) + a_{BC}e^{-kV/Q}H(t-V/Q) $$
-$$ b(V, t) = \frac{2a_0 \left(1-H(t-V/Q)\right)}{\left(1-e^{-kt}\right)^{-1}} + H(t-V/Q) (2 a_{BC}(1-e^{-kV/Q}) + b_{BC} - b_0) + b_0$$
-
-where $P_0$ and $P_{BC}$ represent the initial and boundary condition of species $P$ (respectively), and $H(t)$ is the *Heaviside* or unit step function.
-
-## Simulation Setup
-
-The example directory has three main files:
-* **CONFIG** - specifies many input and simulation parameters, such as the compartment model, initial conditions, and boundary conditions.
-* **reactions** - specifies the reactions involved in the system along with their associated kinetic rate constants.
-* **pfr_analysis.py** - contains the code necessary to run this example.
-
-This example will use the previously described reaction system with initial and boundary conditions as follows (units of [M]):
-$$ a(0, t) = a_{BC} = 1 $$
-$$ a(V, 0) = a_0 = 0 $$
-$$ b(0, t) = b_{BC} = 0 $$
-$$ b(V, 0) = b_0 = 0 $$
-
-and a reaction rate constant of $k = 0.1$ $s^{-1}$. The code in **pfr_analysis.py** is setup to run this simulation for various PFR volume discretizations including 21, 101, and 501 points in the domain. The transient analysis is saved at the inlet, middle, and outlet volumetric points. After running this Python file, the *outlet* output is:
-
-![PFR Irreversible Linear Reaction Outlet Output.\label{fig:pfr_irreversible_outlet}](images/pfr_irreversible_outlet.png){ width=80% }
+To output the ParaView visualizations, change `output_VTK` to `True` in the `CONFIG` file and re-run the simulation.
 
 # Acknowledgements
 
