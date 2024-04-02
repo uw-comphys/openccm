@@ -32,7 +32,7 @@ bibliography: paper.bib
 
 # Summary
 
-`OpenCCM` is a compartmental modelling [@Jourdan2019] software package which is based on recently-developed fully automated flow alignment compartmentalization methods [@Vasile2024]. It is primarily intended for large-scale flow-based processes where there is weak coupling between composition changes, e.g. through (bio)chemical reactions, and convective mass transport in the system. Compartmental modelling is an important approach used to developed reduced-order models [@Chinesta2017][@Benner2020] using a priori knowledge
+`OpenCCM` is a compartmental modelling [@Jourdan2019] software package which is based on recently-developed fully automated flow alignment compartmentalization methods [@Vasile2024]. It is primarily intended for large-scale flow-based processes where there is weak coupling between composition changes, e.g. through (bio)chemical reactions, and convective mass transport in the system. Compartmental modelling is an important approach used to developed reduced-order models [@Chinesta2017] [@Benner2020] using a priori knowledge
 of process hydrodynamics [@Jourdan2019]. The computational cost of large-scale reacting flow problems, such as in industrial processes with stirred-tank (bio)chemical reactors, makes direct fully-coupled simulations infeasible. Compartmental modelling methods, such as those implemented in `OpenCCM`, enable simulations of these processes to be performed with far less computational complexity while still capturing the key aspects of their performance.
 
 `OpenCCM` integrates with two multiphysics simulation software packages, `OpenCMP` [@Monte2022] and `OpenFOAM` [@OpenFOAM], allowing for ease of transferring simulation data for compartmentalization. Additionally, it provides users with built-in functionality for calculating residence times, exporting to transfer data to simulation software, and for exporting results for visualization using `ParaView` [@Paraview].
@@ -64,7 +64,7 @@ The overall aim of `OpenCCM` is to fill this need for an open-source compartment
 
 | Feature                 | Description                                                                       |
 |-------------------------|-----------------------------------------------------------------------------------|
-| Model support           | Accepts `OpenCMP` [@Monte2021] and `OpenFOAM` [@`OpenFOAM`] results                     |
+| Model support           | Accepts `OpenCMP` [@Monte2022] and `OpenFOAM` [@OpenFOAM] results                     |
 | Compartmentalization    | Single-phase flow-based compartment identification                                |
 | Compartmental Modelling | PFR-in-series-based model                                                         |
 |                         | Previous SotA CSTR-based models                                                   |
@@ -132,7 +132,8 @@ The parser does not have a preference for the ordering of the configuration file
 
 Suppose the reversible reaction,
 
-    `2NaCl + CaCO3 <-> Na2CO3 + CaCl2`
+$$\require{mhchem}$$    
+$$\ce{2NaCl + CaCO3 <-> Na2CO3 + CaCl2}$$
 
 with `k_f = 5e-2` and `k_r = 2` is used for simulations. These species must first be redefined in simple terms in agreement with the reactions parser, i.e. a = NaCl, b = CaCO3, c = Na2CO3, and d = CaCl2. A configuration file for this reversible reaction may then be:
 
@@ -161,25 +162,25 @@ Below is an in-depth example, following along with [@Vasile2024], of the example
 ## Hydrodynamics and Compartmental Model
 The steady-state hydrodynamic flow-profile is obtained by running the `OpenCMP` simulation through the `run_`OpenCMP`.py` script in the folder. The resulting flow profile was opened in ParaView and the line integral convolution of the velocity field is shown below, colored by velocity magnitude.
 
-![Surface LIC of CFD hydrodynamics](images/lic_domain.png){ width=98% }
+![Visualization of hydrodynamics from CFD simulation with line integral convolutions indicating local flow direction and color corresponding to velocity magnitude.](images/lic_domain.png){ width=98% }
 
 The underlying velocity field data was then processed by OpenCCM to produce a network of compartments by using the `run_compartment.py` script. The figure below, again visualized with ParaView, shows each element of the original mesh colored according to the compartment it belongs to.
 
-![Labelled Compartments.](images/labelled_compartments.png){ width=98% }
+![Visualization of flow-informed compartmentalization with coloring corresponding to compartment number.](images/labelled_compartments.png){ width=98% }
 
 That network of compartments is further processed as each compartment is represented by a series of plug flow reactors (PFRs). The resulting network (graph) of PFRs is shown in the figure below; nodes are the centers of the PFRs and edges are connections (flows) between PFRs.
 
-![Network of PFRs.](images/compartment_network.pdf){ width=98% }
+![Undirectly graph of the compartment network resulting from both (i) flow-information compartmentalization and (ii) the use of spatially-varying compartment approximations (PFRs).](images/compartment_network.pdf){ width=98% }
 
 ## RTD Curves
 The Residence Time Distribution (RTD) curve for both the CFD and Compartmental Model (CM) are calculated using the script in the supplementary material of [@Vasile2024].
 
-![Residence time distribution curves between CFD and CM.](images/e(t)_for_cfd_vs_pfr.pdf){ width=60% }
+![Residence time distribution curves for both CFD and CM simulations.](images/e(t)_for_cfd_vs_pfr.pdf){ width=60% }
 
 ## Reactions
 Finally, to demonstrate how to use the reaction system we will implement the reversible reaction system mentioned above:
 
-    `2NaCl + CaCO3 <-> Na2CO3 + CaCl2`
+$$\ce{2NaCl + CaCO3 <-> Na2CO3 + CaCl2}$$
 
 with `k_f = 5e-2` and `k_r = 2` with a = NaCl, b = CaCO3, c = Na2CO3, and d = CaCl2. The initial conditions are 0 for all species and the boundary conditions at the inlet are `[NaCl] = [CaCO3] = 1` and `[Na2CO3] = [CaCl2] = 0`. The equations and conditions have already been specified, enable the reactions by uncommenting the `;reactions_file_path = reactions` line by removing the ';' at the start of the line. Note that when you re-run the compartmentalization it will finish much faster than the first time, this is because the compartmental model does not have to be re-created, instead it is loaded from disk.
 
