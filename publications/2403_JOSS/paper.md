@@ -32,31 +32,20 @@ bibliography: paper.bib
 
 # Summary
 
-`OpenCCM` is a compartmental modelling [@Jourdan2019] software package which is based on recently-developed fully automated flow alignment compartmentalization methods [@Vasile2024]. It is primarily intended for large-scale flow-based processes where there is weak coupling between composition changes, e.g. through (bio)chemical reactions, and convective mass transport in the system. Compartmental modelling is an important approach used to developed reduced-order models [@Chinesta2017] [@Benner2020] using a priori knowledge
-of process hydrodynamics [@Jourdan2019]. The computational cost of large-scale reacting flow problems, such as in industrial processes with stirred-tank (bio)chemical reactors, makes direct fully-coupled simulations infeasible. Compartmental modelling methods, such as those implemented in `OpenCCM`, enable simulations of these processes to be performed with far less computational complexity while still capturing the key aspects of their performance.
+`OpenCCM` is a compartmental modelling [@Jourdan2019] software package which is based on recently-developed fully automated flow alignment compartmentalization methods [@Vasile2024]. It is primarily intended for large-scale flow-based processes where there is weak coupling between composition changes, e.g. through (bio)chemical reactions, and convective mass transport in the system. Compartmental modelling is an important approach used to developed reduced-order models [@Chinesta2017] [@Benner2020] using a priori knowledge of process hydrodynamics [@Jourdan2019]. Compartmental modelling methods, such as those implemented in `OpenCCM`, enable simulations of these processes to be performed with far less computational complexity while still capturing the key aspects of their performance.
 
-`OpenCCM` integrates with two multiphysics simulation software packages, `OpenCMP` [@Monte2022] and `OpenFOAM` [@OpenFOAM], allowing for ease of transferring simulation data for compartmentalization. Additionally, it provides users with built-in functionality for calculating residence times, exporting to transfer data to simulation software, and for exporting results for visualization using `ParaView` [@Paraview].
-
-`OpenCCM` development follows the principles of ease of use, performance, and extensibility. The configuration file-based user interface is intended to be concise, readable, and intuitive. Furthermore, the code base is structured and documented [@Vasile2024] and uses an internal mesh representation such that experienced users can add input-output bindings for their packages (e.g. FEniCS or ANSYS) with no modifications required to the main compartmental modelling code.
-
-While compartmental modelling is advantageous compared to direct simulations, traditional approaches suffer from either lack of generality, too much generality, or lack of physical interpretability of results.
-`OpenCCM` addresses these issues by providing a fully automated flow-informed compartmental modelling method [@Vasile2024] which uses both flow-informed compartmentalization methods and high-order (spatial) models for each compartment.
-Furthermore, constructed compartmental models retain one-to-one correspondence between spatial regions within the original simulation domain and compartments used in the reduced-order model.
-Post-processing methods are included for mapping simulation results from compartment domains to the original simulation domain, useful for both visualization purposes and for further simulations in other software (e.g. multi-scale modelling).
+`OpenCCM` integrates with two multiphysics simulation software packages, `OpenCMP` [@Monte2022] and `OpenFOAM` [@OpenFOAM], allowing for ease of transferring simulation data for compartmentalization. Additionally, it provides users with built-in functionality for calculating residence times, exporting to transfer data to simulation software, and for exporting results for visualization using `ParaView` [@Paraview]. Post-processing methods are included for mapping simulation results from compartment domains to the original simulation domain, useful for both visualization purposes and for further simulations in other software (e.g. multi-scale modelling).
 
 
 # Statement of Need
 
 Simulation-based design and analysis continues to be widely applied in research and development of physicochemical processes.
-Processes with large differences in characteristic time- and length-scale result in the infeasibility of direct multiphysics simulations due to computational limitations. For example, many processes in the pharmaceutical industry, such as bioreactors and crystalizers, contain dynamic phenomena with disparate time-scales. Typically short time-scale hydrodynamics and long time-scale (bio)chemical reactions necessitate that simulations be performed with for long (reaction) times but with small (hydrodynamic) time integration steps. This imposes a significant computation costs which severely reduces the utility of these simulations for entire classes of processes. Compartmental modelling is well-suited for such applications because it produces reduced-order models which are orders-of-magnitude less computationally demanding than direct simulation by taking advantage of the weak coupling between the short and long time-scale phenomena.
+Processes with large differences in characteristic time- and length-scale result in the infeasibility of direct multiphysics simulations due to computational limitations. This imposes a significant computation costs which severely reduces the utility of these simulations for entire classes of processes. Compartmental modelling is well-suited for such applications because it produces reduced-order models which are orders-of-magnitude less computationally demanding than direct simulation by taking advantage of the weak coupling between the short and long time-scale phenomena.
 
 However, there are several barriers to the more widespread use of compartmental models. The largest of these is the lack of software for automatically generating compartmental models. There exists closed-source software, specifically `AMBER` [@Amber], for manually creating and solving well-mixed compartment networks.
-However, this software is cost-prohibitive for much of the research community and lacks automated compartmentalization.
-These attributes severely limit its applicability for many researchers and use-cases, specifically engineering design and geometry iterations. There also exists open-source software, `Cantera` [@Cantera], for solving compartment networks. However, it does not incorporate flow information, when available, either from direct observation or multiphysics simulation. Furthermore, neither of these software allow for usage and direct transfer of flow information from multiphysics simulations, such as computational fluid dynamics (CFD) simulations, which are typically feasible over short times-cales. Flow-informed compartmentalization methods are specifically developed for this use case; creating compartments and interconnections are based on detailed flow information, instead of relying on expert knowledge/insight and manual compartmentalization. The only option for the research community to date, supported by practice as evidenced by the compartmental modelling literature [@Jourdan2019], is to resort to manual compartmentalization and manual development of the coupled ODE/PDEs corresponding to mass and energy balances for each compartment.
+However, this software is cost-prohibitive for much of the research community and lacks automated compartmentalization. There also exists open-source software, `Cantera` [@Cantera], for solving compartment networks. However, it does not incorporate flow information, when available, either from direct observation or multiphysics simulation. Furthermore, neither of these software allow for usage and direct transfer of flow information from multiphysics simulations, such as computational fluid dynamics (CFD) simulations, which are typically feasible over short times-scales.
 
-The overall aim of `OpenCCM` is to fill this need for an open-source compartmental modelling package which is user-friendly, compatible with a variety of simulation package back-ends (e.g. `OpenFOAM` and `OpenCMP`), and which fits into the users existing simulation and post-processing software toolchain, i.e. `ParaView`. `OpenCCM` was developed using an intermediary mesh and flow-field format, allowing for the compartmental modelling algorithm and spatial mapping to be simulation package agnostic. This enables users to import flow information from direct simulation packages of their choice and export compartmental model simulation results back into that native format.
-
-`OpenCCM` provides pre-implemented finite-difference based solvers for the resulting models and a configuration file-based user interface to allow the general simulation community, not just simulation experts, to immediately take advantage of the benefits of such models. The user interface is designed to be intuitive, readable, and requires no programming experience - solely knowledge of the command line interface (CLI). Users may choose between either well-mixed (CSTR) or spatially-varying (PFR) compartment models, and any reactions occurring in the system, but need no experience with the actual numerical implementation of the models or the mathematical derivation of net reaction rates.
+The overall aim of `OpenCCM` is to fill this need for an open-source compartmental modelling package which is user-friendly, compatible with a variety of simulation package back-ends (e.g. `OpenFOAM` and `OpenCMP`), and which fits into the users existing simulation and post-processing software toolchain, i.e. `ParaView`.
 
 
 # Features
@@ -77,63 +66,33 @@ The overall aim of `OpenCCM` is to fill this need for an open-source compartment
 | Performance             | Multi-threading                                                                     |
 |                         | Caching of intermediary results to speed-up subsequent runs                         |
 
-Testing of the package is accomplished using a variety of methods. The core functions of the package all feature assert statements on their output to ensure that expected properties are met and invariants are preserved. The method identifies compartments such that they satisfy certain properties, mainly that they represent unidirectional flow. However, while the method is deterministic, it is sensitive to the mesh and the initial seeds. Thus, several different, but interchangeable, compartment networks can be produced from the same CFD simulation. Aside from trivial flow profiles and meshes, it is not feasible to predict the resulting compartmentalization to the degree needed for traditional unit testing. Instead, examples are included which compare quantitatively measurable predictions, e.g. residence time distribution, between the CFD and compartmental model. However, since this method is inherently a coarse-grained approximation of the CFD, approximate and not exact results are expected.  
 
 # User Interface
 
-The `OpenCCM` Python package can be used via text-based configuration files centered around the CLI (command line interface). The software was designed such that each run would be in its own self-contained directory. This can either be a new directory created for the compartmental model. In addition to the `OpenCCM` config files, the required contents of the directory depends on the simulation package being used. The package currently supports two open source simulation packages: ``OpenCMP`` and ``OpenFOAM``.
-
-For ``OpenCMP`` three files are required:
+The `OpenCCM` Python package can be used via text-based configuration files centered around the CLI (command line interface) where each simulation run/project is in a self-contained directory. In addition to the `OpenCCM` configuration files, the required contents include flow information from one of two open source simulation packages: ``OpenCMP`` and ``OpenFOAM``. For ``OpenCMP`` three files are required:
 
 1) the ``OpenCMP`` config file,
 2) the mesh on which the simulation was run, and
 3) the .sol solution file that contains the velocity profile to use for creating the compartmental model.
-
-The `OpenCCM` config file will specify the path of the ``OpenCMP`` config file and the `.sol` file, the location of the mesh file will be read from the ``OpenCMP`` config file.
 
 For ``OpenFOAM``, two directories are required:
 
 1) the `constant` directory which contains the mesh information in ASCII format,
 2) a directory containing the simulation results to be used for creating the compartmental model saved in ASCII format.
 
-The path to the solution directory is specified in the `OpenCCM` config, and the `constant` directory is assumed to be in the same parent folder.
-
-After running, `OpenCCM` will create several directories:
-
-* `log` directory which contains detailed debugging information, if debug logging is enabled, about each step of the compartmental modelling process.
-* `cache` directory which contains intermediary files used for speeding up subsequent runs of the model. This includes the mesh and velocity vector fields converted to the intermediary format as well as the network of PFRs/CSTRs.
-* `ouput_ccm` directory which contains `ParaView` files for visualizing the compartments as well as the simulation results from the compartmental model, both in numpy format for further analysis and in either `ParaView` format or the native format of the simulation package that was originally used.
+The path to the solution directory is specified in the `OpenCCM` config, and the `constant` directory is assumed to be in the same parent folder. The `OpenCCM` software will create several output directories: `log/` which contains detailed debugging information (if enabled), `cache/` which contains intermediary files, and `output_ccm/` both simulation results of the compartmental model (in various user-specified formats) and `ParaView` files for visualization.
 
 # Reaction Configuration File
 
-The reactions parser developed for `OpenCCM` reads and parses the reactions configuration files and can handle general reaction equations of the form,
+The chemical reaction parser in `OpenCCM` reads and parses the reactions configuration files and can handle general reaction equations of the form,
 
 `aA + bB + [...] -> cC + dD + [...]`
 
-with associated numeric rate constants. It intentionally does not support the standard `<->` symbol for reversible chemical reactions, so that each independent reaction has an explicit rate constant clearly defined in the same file. Therefore, a reversible reaction must be written as two independent forward reactions (with separate rate constants).
-
-Additionally, specie superscripts (i.e. ions) or subscripts (i.e. compounds) in traditional chemistry notation are not supported by the parser. Instead, each specie must solely contain letter characters (except for stoichiometric coefficients which may precede these characters). For example, if the user wishes to use `O2`, it must be written as `O` or a dummy name such as `a` in the reactions configuration file.
-
-The kinetic rate constants must be expressed as positive real numbers and the parser does support scientific notation for these values. Additionally, each reaction/rate pair must also have a unique *identifier*.
-This identifier allows the parser to correctly associate a reaction/rate pair, and is allowed to be any alpanumeric value (i.e. R1, R2, etc.).
-
-Additionally, the parser is robust such that it will flag any inappropriate use of the configuration setup. This includes:
-
-* duplicate reactions,
-* reactions with missing rates,
-* rates with missing reactions,
-* non-numeric rate values, and
-* alphanumeric species (aside from stoichiometric prefixes)
-
-The parser does not have a preference for the ordering of the configuration file (either [RATES] then [REACTIONS] or vice versa). Also, the specific reactions and rates themselves do not need to be in a specific order as long the identifiers are correct for each reaction/rate pair.
-
-## Example Configuration
-
-Suppose the reversible reaction,
+with associated numeric rate constants. It intentionally does not support the standard `<->` symbol for reversible chemical reactions, so that each independent reaction has an explicit rate constant clearly defined in the same file. Therefore, a reversible reaction must be written as two independent forward reactions (with separate rate constants). Each specie *label* must solely contain letter characters, e.g. `O` instead of `O2` for oxygen. Kinetic rate constants must be expressed as positive real numbers in standard or scientific notation. Additionally, each reaction/rate pair must also have a unique *identifier* (i.e. R1, R2). For example, take the reversible reaction,
 
 $$2NaCl + CaCO3 <-> Na2CO3 + CaCl2$$
 
-with `k_f = 5e-2` and `k_r = 2` is used for simulations. These species must first be redefined in simple terms in agreement with the reactions parser, i.e. a = NaCl, b = CaCO3, c = Na2CO3, and d = CaCl2. A configuration file for this reversible reaction may then be:
+with `k_f = 5e-2` and `k_r = 2` the species must first be redefined in simple terms in agreement with the reactions parser, i.e. a = NaCl, b = CaCO3, c = Na2CO3, and d = CaCl2. A configuration file for this reversible reaction may then be:
 
     [REACTIONS]
     R1: 2a + b -> c + d
@@ -145,24 +104,15 @@ with `k_f = 5e-2` and `k_r = 2` is used for simulations. These species must firs
 
 where **R1** and **R2** are the reaction *identifiers* for the forward and reverse reactions respectively.
 
-Multiple examples with different reactions have been developed for `OpenCCM`.
-
 # Examples of Usage
 
-Several examples are provided, which for the time being are all in 2D. These examples show the handling of both `OpenCMP` and `OpenFOAM` simulation results, as well as creating both PFR-based and CSTR-based compartmental models.
-The geometry used in [@Vasile2024] is reproduced in both `OpenCMP` and `OpenFOAM` under the ``OpenCMP`/pipe_with_recirc_2d` and ``OpenFOAM`/pipe_with_recic` directories, respectively.
+Several examples are provided in the `OpenCCM` documentation which demonstrate the usage of both `OpenCMP` and `OpenFOAM` simulation flow information for compartmentalization. One example uses the geometry from [@Vasile2024] and shows how to execute the needed CFD simulation for flow information (both using `OpenCMP` and `OpenFOAM`), create/visualize the compartmental model results, and compare the predicted RTD  to the reference result directly from CFD simulation.
 
-Also included in the `examples/simple_reactors` folder are the files needed to run `OpenCMP`-based single CSTR and single PFR models for various reaction systems.
-These two examples act as tutorials for how to input reactions and a convergence/error analysis for linear, non-linear, coupled, and reversible reaction systems.
-
-Below is an in-depth example, following along with [@Vasile2024], of the example in `examples/`OpenCMP`/pipe_with_recirc_2d` on how to run the CFD simulation, create and visualize the compartmental model, compare the RTD of the CFD and compartmental model, and finally demonstrate simulating a set of reactions on the compartment network.
-
-## Hydrodynamics and Compartmental Model
-The steady-state hydrodynamic flow-profile is obtained by running the `OpenCMP` simulation through the `run_`OpenCMP`.py` script in the folder. The resulting flow profile was opened in `ParaView` and the line integral convolution of the velocity field is shown below, colored by velocity magnitude.
+For this illustrative example, the steady-state hydrodynamic flow-profile is obtained by running the `OpenCMP` simulation through the `run_OpenCMP.py` script in the folder. The resulting flow profile was opened in `ParaView` and the line integral convolution of the velocity field is shown below, colored by velocity magnitude.
 
 ![Visualization of hydrodynamics from CFD simulation with line integral convolutions indicating local flow direction and color corresponding to velocity magnitude.](images/lic_domain.png){ width=98% }
 
-The underlying velocity field data was then processed by OpenCCM to produce a network of compartments by using the `run_compartment.py` script. The figure below, again visualized with `ParaView`, shows each element of the original mesh colored according to the compartment it belongs to.
+The underlying velocity field data is then processed using `OpenCCM` to produce a network of compartments by executing the `run_compartment.py` script. The figure below shows each element of the original mesh colored according to the compartment it belongs to.
 
 ![Visualization of flow-informed compartmentalization with coloring corresponding to compartment number.](images/labelled_compartments.png){ width=98% }
 
@@ -171,11 +121,13 @@ That network of compartments is further processed as each compartment is represe
 ![Undirectly graph of the compartment network resulting from both (i) flow-information compartmentalization and (ii) the use of spatially-varying compartment approximations (PFRs).](images/compartment_network.pdf){ width=98% }
 
 ## RTD Curves
+
 The Residence Time Distribution (RTD) curve for both the CFD and Compartmental Model (CM) are calculated using the script in the supplementary material of [@Vasile2024].
 
 ![Residence time distribution curves for both CFD and CM simulations.](images/e(t)_for_cfd_vs_pfr.pdf){ width=60% }
 
 ## Reactions
+
 Finally, to demonstrate how to use the reaction system we will implement the reversible reaction system mentioned above:
 
 $$2NaCl + CaCO3 <-> Na2CO3 + CaCl2$$
