@@ -132,8 +132,7 @@ The parser does not have a preference for the ordering of the configuration file
 
 Suppose the reversible reaction,
 
-$$\require{mhchem}$$    
-$$\ce{2NaCl + CaCO3 <-> Na2CO3 + CaCl2}$$
+$$2NaCl + CaCO3 <-> Na2CO3 + CaCl2$$
 
 with `k_f = 5e-2` and `k_r = 2` is used for simulations. These species must first be redefined in simple terms in agreement with the reactions parser, i.e. a = NaCl, b = CaCO3, c = Na2CO3, and d = CaCl2. A configuration file for this reversible reaction may then be:
 
@@ -180,7 +179,7 @@ The Residence Time Distribution (RTD) curve for both the CFD and Compartmental M
 ## Reactions
 Finally, to demonstrate how to use the reaction system we will implement the reversible reaction system mentioned above:
 
-$$\ce{2NaCl + CaCO3 <-> Na2CO3 + CaCl2}$$
+$$2NaCl + CaCO3 <-> Na2CO3 + CaCl2$$
 
 with `k_f = 5e-2` and `k_r = 2` with a = NaCl, b = CaCO3, c = Na2CO3, and d = CaCl2. The initial conditions are 0 for all species and the boundary conditions at the inlet are `[NaCl] = [CaCO3] = 1` and `[Na2CO3] = [CaCl2] = 0`. The equations and conditions have already been specified, enable the reactions by uncommenting the `;reactions_file_path = reactions` line by removing the ';' at the start of the line. Note that when you re-run the compartmentalization it will finish much faster than the first time, this is because the compartmental model does not have to be re-created, instead it is loaded from disk.
 
