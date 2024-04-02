@@ -118,8 +118,9 @@ def plot_results(system_results:    Tuple[
 
     id_inlet  = c_mesh.grouped_bcs.id(config_parser.get_item(['POST-PROCESSING', 'inlet_bc_name'],  str))
     id_outlet = c_mesh.grouped_bcs.id(config_parser.get_item(['POST-PROCESSING', 'outlet_bc_name'], str))
-    points_per_model = config_parser.get_item(['SIMULATION', 'points_per_pfr'], int)
-    species_names    = config_parser.get_list(['SIMULATION', 'specie_names'],   str)
+    points_per_model   = config_parser.get_item(['SIMULATION', 'points_per_pfr'], int)
+    species_names      = config_parser.get_list(['SIMULATION', 'specie_names'],   str)
+    output_folder_path = config_parser.get_item(['SETUP', 'output_folder_path'], str)
 
     # y is of shape of (n_species, n_states, n_timesteps)
     y, t, inlets_map, outlets_map = system_results
@@ -136,11 +137,11 @@ def plot_results(system_results:    Tuple[
             id_end = points_per_model * (model + 1) - 1
             plt.plot(t, y[specie_id, id_end, :], '--')
             legend.append("outlet id: {}".format(id_end))
-        plt.xlabel("Time")
+        plt.xlabel("Time [T]")
         plt.ylabel("Concentration")
         plt.legend(legend)
-        plt.title(f"System's Step Response for '{specie_name}'")
-        plt.show()
+        plt.title(f"System's Response for '{specie_name}'")
+        plt.savefig(f'{output_folder_path}/system_response_{specie_name}.pdf')
 
         # Plot Residence Time Distribution: E(t) and F(t)
         if rtd is not None:
@@ -150,7 +151,7 @@ def plot_results(system_results:    Tuple[
             plt.ylabel("Fraction of Mass per Unit Time [1/T]")
             plt.axhline(y=0, color='grey', linestyle='--')
             plt.title(f"Residence Time Distribution Function for '{specie_name}'")
-            plt.show()
+            plt.savefig(f'{output_folder_path}/rtd_{specie_name}.pdf')
 
             plt.figure()
             plt.plot(rtd[specie_id, :, 0], rtd[specie_id, :, 2])
@@ -159,7 +160,7 @@ def plot_results(system_results:    Tuple[
             plt.axhline(y=0, color='grey', linestyle='--')
             plt.axhline(y=1, color='grey', linestyle='--')
             plt.title(f"Cumulative Distribution Function for '{specie_name}'")
-            plt.show()
+            plt.savefig(f'{output_folder_path}/cm_{specie_name}.pdf')
     print('Done plotting results')
 
 
