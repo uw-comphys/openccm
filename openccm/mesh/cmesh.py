@@ -147,15 +147,15 @@ class CMesh:
 
         for facet, facet_vertices in enumerate(facet_vertices_all):
             p1 = vertices[facet_vertices[0]]
-            vector_facet_1 = vertices[facet_vertices[1]] - p1
+            v1 = vertices[facet_vertices[1]] - p1
 
             if mesh_dim == 2:
-                normals[facet, :] = [vector_facet_1[1], -vector_facet_1[0]]
+                normals[facet, :] = [v1[1], -v1[0]]
             elif mesh_dim == 3:
-                normals[facet, :] = np.cross(vector_facet_1, vertices[facet_vertices[2]] - p1)
+                v2 = vertices[facet_vertices[2]] - p1
+                normals[facet, :] = [v1[1]*v2[2] - v1[2]*v2[1], v1[2]*v2[0] - v1[0]*v2[2], v1[0]*v2[1] - v1[1]*v2[0]]
             else:
                 raise ValueError("Unsupported mesh dimension of {}".format(mesh_dim))
-            normals[facet, :] /= np.linalg.norm(normals[facet, :])
 
             other_points = set(element_vertices[facet_elements[facet][0]])
             other_points.difference_update(facet_vertices)
@@ -173,6 +173,9 @@ class CMesh:
                 else:  # The normal is perpendicular to the edge we're testing with
                     pass
 
+        normals /= np.linalg.norm(normals, axis=1)[:, np.newaxis]
+
+        assert not np.any(np.isnan(normals))
         return normals
 
     def _calculate_facet_sizes(self) -> np.ndarray:
@@ -185,6 +188,7 @@ class CMesh:
 
         mesh_dim = vertices.shape[1]
         sizes = np.zeros(len(self.facet_vertices))
+        _tmp_sizes = np.zeros((len(self.facet_vertices), 3))
 
         if mesh_dim == 2:
             for id_facet, facet_vertices in enumerate(facet_vertices_all):
@@ -192,20 +196,19 @@ class CMesh:
                 p1 = vertices[facet_vertices[1]]
                 sizes[id_facet] = np.linalg.norm(p1 - p0)
         elif mesh_dim == 3:
-            size = np.zeros(vertices[0].shape)
             # Iterate over each facet and its corresponding vertex indices
             for id_facet, facet_vertices in enumerate(facet_vertices_all):
-                size[:] = 0
-
                 # Iterate over the vertices of the facet
                 for i in range(1, len(facet_vertices) - 1):
                     # Calculate the size of the facet
-                    size += np.cross(vertices[facet_vertices[i], :] - vertices[facet_vertices[0], :],
-                                     vertices[facet_vertices[i + 1], :] - vertices[facet_vertices[0], :])
-                sizes[id_facet] = np.linalg.norm(size) / 2
+                    v1 = vertices[facet_vertices[i], :] - vertices[facet_vertices[0], :]
+                    v2 = vertices[facet_vertices[i + 1], :] - vertices[facet_vertices[0], :]
+                    _tmp_sizes[id_facet, 0] += v1[1]*v2[2] - v1[2]*v2[1]
+                    _tmp_sizes[id_facet, 1] += v1[2]*v2[0] - v1[0]*v2[2]
+                    _tmp_sizes[id_facet, 2] += v1[0]*v2[1] - v1[1]*v2[0]
         else:
             raise ValueError("Unsupported mesh of dimension {}".format(mesh_dim))
-
+        sizes += np.linalg.norm(_tmp_sizes, axis=1) / 2
         return sizes
 
     def get_outward_facing_normal(self, facet: int, element: int):
