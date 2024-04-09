@@ -48,6 +48,7 @@ config_defaults: Dict = {
                    'reactions_file_path': 'None',
                    'rtol': 1e-6,
                    'atol': 1e-6,
+                   't_eval': 'all',
                    'boundary_conditions': ''},
     'POST-PROCESSING': {'save_to_file': True,
                         'plot_results': False,
