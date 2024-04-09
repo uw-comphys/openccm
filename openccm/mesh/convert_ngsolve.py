@@ -111,7 +111,7 @@ def _create_bc_mappings(mesh: 'ngsolve.Mesh', grouped_bcs: GroupedBCs) -> Tuple[
             cfs_4_bcs.append(CoefficientFunction(labeling_func(bc_name)))
 
         marker_gfu.Set(CoefficientFunction(cfs_4_bcs), definedon=mesh.Boundaries('|'.join(ordered_unique_bc_names)))
-        return np.array(np.round(marker_gfu.vec), dtype=int)
+        return np.array(np.round(marker_gfu.vec), dtype=np.min_scalar_type(-int(max(np.abs(marker_gfu.vec)))))
 
     fes         = FacetFESpace(mesh, order=0)
     marker_gfu  = GridFunction(fes)

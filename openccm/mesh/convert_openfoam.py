@@ -111,7 +111,7 @@ def _create_bc_mappings(number_facets: int, grouped_bcs: GroupedBCs, bc_names: D
     """
     assert len(set(bc_names)) == grouped_bcs.num_bcs
 
-    facet_to_bc_map = np.zeros(number_facets)
+    facet_to_bc_map = np.zeros(number_facets, dtype=np.min_scalar_type(-number_facets))
     bc_to_facet_map = {}
     for bc_name, start_and_num in bc_names.items():
         facet_to_bc_map[start_and_num[0]:(start_and_num[0] + start_and_num[1])] = grouped_bcs.id(bc_name)
