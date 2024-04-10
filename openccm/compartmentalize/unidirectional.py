@@ -550,25 +550,12 @@ def connect_compartments_using_unidirectional_assumptions(compartment_network:  
     #   The position of each facet is the mean of all of its vertices
     centers_of_flow_for_connection: Dict[int, np.ndarray] = dict()
     with open(log_folder_path + 'connect' + ('' if final else '_for_merge') + '.txt', 'w') as logging:
-        # Calculate the average direction of each compartment
-        avg_directions: Dict[int, np.ndarray] = dict()
-        for id_compartment in compartment_network:
-            avg_directions[id_compartment] = np.mean(dir_vec[sorted(compartments[id_compartment])], 0)
-            avg_directions[id_compartment] /= np.linalg.norm(avg_directions[id_compartment])
-
-        if DEBUG:
-            logging.write("avg_direction\n")
-            for i, flow in avg_directions.items():
-                logging.write("{}: {}\n".format(i, flow))
-
         # Calculate the number of connections between compartments and their locations
         for id_compartment in compartment_network:
             # Inlets and outlets for this compartment.
             #   Key is connection ID, value is the ID of the other compartment
             #   A negative key represents an outlet and a positive an inlet
             compartment_connections: Dict[int, int] = dict()
-
-            avg_direction = avg_directions[id_compartment]
 
             # Calculate flowrate, center of flow, and inlet/outlet status for all connection for this compartment
             for neighbour in compartment_network[id_compartment]:
@@ -619,7 +606,7 @@ def connect_compartments_using_unidirectional_assumptions(compartment_network:  
                     ###
                     # 3. If it's below the total flow threshold, delete this connection and stop.
                     ###
-                    if np.abs(total_flow) < flow_threshold:
+                    if final and np.abs(total_flow) < flow_threshold:
                         continue
 
                     ###
@@ -656,62 +643,55 @@ def connect_compartments_using_unidirectional_assumptions(compartment_network:  
                     ###
                     # 7. For each resulting contiguous surface calculate the total flowrate through it and if its an inlet/outlet
                     ###
-                    flow_through_surfaces: List[float] = [sum(flow_through_facet[id_facet] for id_facet in surface) for surface in surfaces]
-                    flow_through_surfaces = [total_flow * flow_i / total_flow_thresholded for flow_i in flow_through_surfaces]
-
-                    is_inlet = [flow < 0 for flow in flow_through_surfaces]
-
-                    if final:
-                        # Make all flows positive, the inlet/outlet information is stored separately
-                        flow_through_surfaces = list(np.abs(flow_through_surfaces))
-                        abs_flow_through_surfaces: List[float] = [sum(abs(flow_through_facet[id_facet]) for id_facet in surface) for surface in surfaces]
-
-                        ###
-                        # 8. Calculate the center of flow for each surface.
-                        ###
-                        centers_of_flow: List[np.ndarray] = []
-                        for i, surface in enumerate(surfaces):
-                            center_of_flow = np.sum([abs(flow_through_facet[facet]) * mesh.facet_centers[facet] for facet in surface], 0)
-                            center_of_flow /= abs_flow_through_surfaces[i]
-                            centers_of_flow.append(center_of_flow)
+                    flow_through_surfaces: Dict[int, float] = {}
+                    for i, surface in enumerate(surfaces):
+                        flow_through_surfaces[i] = sum(flow_through_facet[id_facet] for id_facet in surface) * total_flow / total_flow_thresholded
 
                     ###
+                    #  8. Calculate the center of flow for each surface.
                     #  9. Store the results
                     ###
-                    for i in range(len(flow_through_surfaces)):
+                    for i, flowrate in flow_through_surfaces.items():
                         if final:
-                            centers_of_flow_for_connection[id_of_next_connection] = centers_of_flow[i]
-                            volumetric_flows[id_of_next_connection] = flow_through_surfaces[i]
-                        if is_inlet[i]:
-                            compartment_connections[id_of_next_connection] = neighbour
-                        else:
-                            compartment_connections[-id_of_next_connection] = neighbour
+                            center_of_flow = np.sum([abs(flow_through_facet[facet]) * mesh.facet_centers[facet] for facet in surfaces[i]], 0)
+                            center_of_flow /= abs(flow_through_surfaces[i])
 
+                            centers_of_flow_for_connection[id_of_next_connection] = center_of_flow
+                            volumetric_flows[id_of_next_connection] = abs(flowrate)
+
+                        if flowrate < 0:  # Inlet
+                            compartment_connections[id_of_next_connection] = neighbour
+                        else:  # Outlet
+                            compartment_connections[-id_of_next_connection] = neighbour
                         id_of_next_connection += 1
 
             if final:
                 # Must have at least one inlet or outlet. Otherwise, something has gone horrible wrong.
                 assert len(compartment_connections) > 1
 
+                # Calculate average direction
+                avg_direction = np.mean(dir_vec[sorted(compartments[id_compartment])], 0)
+                avg_direction /= np.linalg.norm(avg_direction)
+                if DEBUG:
+                    logging.write(f"avg_direction {id_compartment} = {avg_direction}\n")
+
                 # Calculate the ordering of the inlets/outlets
                 # Project centers of flux onto average direction
                 # Min and max values for normalizing between 0.0 and 1.0
                 # (setting to inf and -inf so that the min and max always work).
-                dot_min = np.inf
-                dot_max = -np.inf
+                dot_min, dot_max = np.inf, -np.inf
                 connections_distances_i: Dict[int, float] = dict()
                 for id_connection in compartment_connections:
                     center_of_flow = centers_of_flow_for_connection[abs(id_connection)]
-                    dot_result = avg_direction.dot(center_of_flow)
+                    dot_val = avg_direction.dot(center_of_flow)
 
-                    dot_min = min(dot_min, dot_result)
-                    dot_max = max(dot_max, dot_result)
-                    connections_distances_i[id_connection] = dot_result
+                    dot_min, dot_max = min(dot_min, dot_val), max(dot_max, dot_val)
+                    connections_distances_i[id_connection] = dot_val
 
                 # Normalize between 0.0 and 1.0
+                delta_dot = dot_max - dot_min
                 for id_connection in connections_distances_i:
-                    connections_distances_i[id_connection] = (connections_distances_i[id_connection] - dot_min) / (
-                                dot_max - dot_min)
+                    connections_distances_i[id_connection] = (connections_distances_i[id_connection] - dot_min) / delta_dot
 
                 connection_distances[id_compartment] = connections_distances_i
             connection_pairing[id_compartment] = compartment_connections
