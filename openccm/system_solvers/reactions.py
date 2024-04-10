@@ -181,8 +181,8 @@ def parse_reactions(specie_order: List[str], rxn_book: Dict[str, List[str]]) -> 
     Notes:
         The reaction parser only supports forward (written) reactions (i.e. use of ->). Reversible reactions must be written as two independent reactions with their associated rate constants.
         The reactions parser can parse the general reaction: aA1 + bB2 + [...] -> gG7 + hH8 + [...].
-        All chemical species can be alphanumeric with underscores (if desired), but cannot contain +/- symbols (i.e. for ions). 
-        We recommend using "m" or "p" for + and - ions, respectively.
+        All chemical species can be alphanumeric with underscores (if desired), but cannot contain +/- symbols (i.e. for ions) in the specie name. 
+        We recommend using "_m" or "_p" for + and - ions, respectively. I.e.: Na+ should be written as Na_p in the reactions and main configuration file.
 
         An appropriate reactions configuration file for the reversible reaction N2O4 <-> 2NO2 with k_f = 1e-2 and k_r = 3e-4 (these are hypothetical rates) would be:
 
