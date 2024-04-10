@@ -165,10 +165,13 @@ def create_boundary_conditions(c0:                  np.array,
     # Hand unroll the loop to apply the BCs
     bc_file_lines.append("@njit(inline='always')  # Do not cache, _ddt will be a large matrix\n")
     bc_file_lines.append("def boundary_conditions(t: float, _ddt: ndarray) -> None:\n")
-    for bc_name in bcs_names_used:
-        for specie_name in bc_dict[grouped_bcs.id(bc_name)]:
-            bc_file_lines.append(f"    _ddt[{specie_names.index(specie_name)}, {'points_' + bc_name}] += {bc_name}_{specie_name}(t) * {'Q_weights_' + bc_name}\n")
-        bc_file_lines.append("\n")
+    if len(bcs_names_used) == 0:
+        bc_file_lines.append('    pass  # No boundary conditions used')
+    else:
+        for bc_name in bcs_names_used:
+            for specie_name in bc_dict[grouped_bcs.id(bc_name)]:
+                bc_file_lines.append(f"    _ddt[{specie_names.index(specie_name)}, {'points_' + bc_name}] += {bc_name}_{specie_name}(t) * {'Q_weights_' + bc_name}\n")
+            bc_file_lines.append("\n")
 
     # Write to file
     bc_file_path = config_parser.get_item(['SETUP', 'working_directory'],      str) + '/bc_code_gen.py'
