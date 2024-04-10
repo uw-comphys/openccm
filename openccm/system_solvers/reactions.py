@@ -17,7 +17,7 @@
 
 import inspect
 from string import ascii_lowercase as alphabet
-from typing import List, Optional, Tuple
+from typing import List, Dict, Optional, Tuple
 
 import numpy as np
 import pyparsing as pp
@@ -74,8 +74,12 @@ def generate_reaction_system(config_parser: 'ConfigParser', _ddt_reshape_shape: 
         # Strip any preceeding, middle, and trailing whitespaces
         all_rates = [rate.strip() for rate in all_rates if rate.strip()]
 
-        # Send all reaction and rate information into parser
-        reaction_eqns = parse_reactions(rxn_species, all_reactions, all_rates)
+        # Get a dictionary with all reaction information first 
+        rxn_book = organize_reactions_input(rxn_species, all_reactions, all_rates)
+
+        # Send all reaction and rate information into parser to create system of equations
+        reaction_eqns = parse_reactions(rxn_species, rxn_book)
+
     # Otherwise, run a tracer experiment (species present but no chemical reactions occur)
     else:
         reaction_eqns = []
@@ -84,22 +88,11 @@ def generate_reaction_system(config_parser: 'ConfigParser', _ddt_reshape_shape: 
     create_reaction_code(rxn_species, reaction_eqns, rxn_file_path, _ddt_reshape_shape)
 
 
-def parse_reactions(specie_order: List[str], all_reactions: List[str], all_rates: List[str]) -> List:
+def organize_reactions_input(specie_order: List[str], all_reactions: List[str], all_rates: List[str]) -> Dict[str, List[str]]:
     """
-    Parses all reactions and rates and creates the differential reaction system of equations.
-    Also enforces specific ordering of system of equations based on species in specie_order (i.e. from main config file).
-    The parser expects (and requires) a specific format for the reactions and in general it can parse the general reaction: aA + bB + [...] -> gG + hH + [...].
-    An appropriate reactions configuration file for the reversible reaction 2a <-> 3b with k_f = 1e-2 and k_r = 3e-4 might be:
-
-        [REACTIONS] 
-        R1: 2a -> 3b
-        R2: 3b -> 2a
-
-        [RATES]
-        R1: 1e-2
-        R2: 3e-4
-
-    See the Notes section below for further description of the expectations and limitations of this custom reactions configuration parser.
+    This function first performs several checks to ensure that the reactions config file was handled correctly by the user. 
+    If successful, it breaks down the provided reactions and rates into an organized dictionary where each key is a reaction ID and the values are a length 2 list, where list is [reaction, rate].
+    It also transforms the given chemical species into dummy specie names, which is much easier for the parser in parse_reactions() to handle. 
 
     Args:
         specie_order:       The ordered species as written in the main configuration file. Must match the same types of species present in reactions config file.
@@ -107,12 +100,7 @@ def parse_reactions(specie_order: List[str], all_reactions: List[str], all_rates
         all_rates:          The partially-parsed reaction rates as extracted from reactions configuration file.
 
     Returns:
-        reaction_eqns:      List containing the system of differential equations in the same order of species as they appear in specie_order. I.e. if specie_order = [a, b] --> reaction_eqns = [da/dt, db/dt].
-    
-    Notes:
-        The reaction parser only supports forward (written) reactions (i.e. use of ->). Reversible reactions must be written as two independent reactions with their associated rate constants (see example above).
-        Furthermore, all chemical species must be strictly alphanumeric and must not contain any special characters (i.e. _, -, +).
-        I.e., if wishing to use the species (in traditional chemistry notation) Na_2CO_3, this must be written as Na2CO3.
+        rxn_book:           A dictionary that contains each reaction and their chemical species / rate constants.
     """ 
 
     # Parse the reaction ids (i.e. R1, R2 etc) from the actual reactions and associated rates. These are needed for proper input checking.
@@ -174,6 +162,38 @@ def parse_reactions(specie_order: List[str], all_reactions: List[str], all_rates
         # assign transformed reaction back to master reaction book
         rxn_book[key][0] = rxn
 
+    return rxn_book
+
+
+def parse_reactions(specie_order: List[str], rxn_book: Dict[str, List[str]]) -> List[str]:
+    """
+    Parses all reactions and rates and creates the differential reaction system of equations.
+    Also enforces specific ordering of system of equations based on species in specie_order (i.e. from main config file).
+    See the Notes section below for further description of expectations and limitations of the reactions configuration parser.
+
+    Args:
+        specie_order:       The ordered species as written in the main configuration file. Must match the same types of species present in reactions config file.
+        rxn_book:           A dictionary that contains each reaction and their chemical species / rate constants.
+
+    Returns:
+        reaction_eqns:      List containing the system of differential equations in the same order of species as they appear in specie_order. I.e. if specie_order = [a, b] --> reaction_eqns = [da/dt, db/dt].
+    
+    Notes:
+        The reaction parser only supports forward (written) reactions (i.e. use of ->). Reversible reactions must be written as two independent reactions with their associated rate constants.
+        The reactions parser can parse the general reaction: aA1 + bB2 + [...] -> gG7 + hH8 + [...].
+        All chemical species can be alphanumeric with underscores (if desired), but cannot contain +/- symbols (i.e. for ions). 
+        We recommend using "m" or "p" for + and - ions, respectively.
+
+        An appropriate reactions configuration file for the reversible reaction N2O4 <-> 2NO2 with k_f = 1e-2 and k_r = 3e-4 (these are hypothetical rates) would be:
+
+            [REACTIONS] 
+            R1: N2O4 -> 2NO2
+            R2: 2NO2 -> N2O4
+
+            [RATES]
+            R1: 1e-2
+            R2: 3e-4
+    """ 
     # The following pyparsing structure outlines the expected reaction structure from reactions config file.
     rxnType = pp.ZeroOrMore(pp.Literal('->')) 
     molecule_with_coeff = pp.ZeroOrMore(pp.Word(pp.nums, '.'+pp.nums))
@@ -272,7 +292,7 @@ def parse_reactions(specie_order: List[str], all_reactions: List[str], all_rates
         for _, specie in enumerate(specie_order):
             where_specie = DEsysLHS.index(specie)
             reaction_eqns.append(DEsysRHS[where_specie])
-    
+  
     return reaction_eqns
 
 
