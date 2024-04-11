@@ -306,6 +306,12 @@ def calculate_compartments(dir_vec:         np.ndarray,
 
     compartments = {i: compartment for i, compartment in enumerate(compartment_list)}
 
+    num_elements     = len(mesh.element_sizes)
+    num_compartments = len(compartments)
+    if num_compartments / num_elements > 0.15:
+        print(f"WARNING: A large number of compartments were created, tolerances may have been misspecified. "
+              f"{num_compartments} on a mesh with {num_elements} elements.")
+
     print("Done calculating compartments")
     return compartments, compartment_of_removed_elements
 
@@ -336,7 +342,7 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
         vel_vec:                Array indexed by element ID for the velocity vector.
         config_parser:          ConfigParser to use.
     """
-    print("Merging small compartments")
+    print("Merging compartments")
 
     # Check compartments
     for compartment_id, network in compartment_network.items():
@@ -347,6 +353,8 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
     log_folder_path      = config_parser.get_item(['SETUP',                'log_folder_path'],      str)
     # The minimum size of a compartment. Units are the same as those used by the mesh.
     min_compartment_size = config_parser.get_item(['COMPARTMENTALIZATION', 'min_compartment_size'], float)
+
+    num_pre_merge = len(compartments)
 
     # Calculate the average direction vector for each compartment
     compartment_avg_directions = np.zeros((max(compartments.keys()) + 1, dir_vec.shape[1]))
@@ -461,7 +469,16 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
             logging.write("compartment_network_new: {}\n".format(compartment_network))
             logging.write("]\n")
 
-    print("Done merging small compartments")
+    num_post_merge = len(compartments)
+    num_merged = num_pre_merge - num_post_merge
+    percent_merged = 100. * (num_merged) / num_pre_merge
+
+    print(f"Merged {num_merged} compartments")
+    if percent_merged > 50:
+        print(f"WARNING: Merged {percent_merged:.4f}% compartments. "
+              f"Compartmentalization and/or merging tolerances may have been misspecified.")
+
+    print("Done merging compartments")
 
 
 def connect_compartments_using_unidirectional_assumptions(compartment_network:  Dict[int, Dict[int, Dict[int, Tuple[int, np.ndarray]]]],
