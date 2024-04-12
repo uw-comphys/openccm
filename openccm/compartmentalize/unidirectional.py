@@ -357,7 +357,8 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
     num_pre_merge = len(compartments)
 
     # Calculate the average direction vector for each compartment
-    compartment_avg_directions = np.zeros((max(compartments.keys()) + 1, dir_vec.shape[1]))
+    # Note that compartment IDs cannot be assumed to be an uninterupted sequence from 0 to max(compartment.keys())
+    compartment_avg_directions = np.inf * np.ones((max(compartments.keys()) + 1, dir_vec.shape[1]))
     for i_compartment in compartments:
         compartment_avg_directions[i_compartment, :] = np.mean(dir_vec[list(compartments[i_compartment]), :], axis=0)
     magnitude = np.linalg.norm(compartment_avg_directions, axis=1)[:, np.newaxis]
