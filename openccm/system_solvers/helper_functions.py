@@ -29,7 +29,7 @@ class H(Function):
     """
 
     @classmethod
-    def eval(cls, t, y_start: float = 0.0, y_stop: float = 1.0, t_start: float = 0.0, dt: float = 1.0):
+    def eval(cls, t):
         """
         Smoothed Heaviside function using a cosine ramp to avoid numerical oscilations.
         Ramping happens over a half-period to provide a zero derivative at both the start and end point of the
@@ -37,15 +37,11 @@ class H(Function):
 
         Args:
             t:          The time at which to evaluate the function at
-            y_start:    The initial value of the function before t = t_start
-            y_stop:     The final value of the function at t = t_start + dt
-            t_start:    The time at which the function should start going from y_start to y_stop
-            dt:         The period of time over which the function goes from y_start to y_stop
         """
         return Piecewise(
-            (y_start,                                                     t < t_start),
-            (y_stop,                                                            t > t_start + dt),
-            ((y_start+y_stop)/2 + (y_start-y_stop)/2 * cos((t-t_start)*pi/dt),  True)
+            (0,                   t < 0),
+            (1,                         t > 0.01),
+            (1/2*(1 - cos(t*pi/0.01)),  True)
         )
 
 
