@@ -66,6 +66,8 @@ atol_opt                = [1e-2]
 run                 = [True]
 # Time range for simulation.
 t_span              = 0, 100
+# The time points at which to obtain compartmental model simulation results. Options are: (all), (delta_t, linear), (log, num_points), and (t1, t2, t3, ... , t4)
+t_eval              = [all]
 # Initial time-step, needed since the solver has issues with time-varying BCs otherwise.
 first_timestep      = [0.0001]
 # If using PFRs this the number of discretization points per PFR (must be at least 2).

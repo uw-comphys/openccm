@@ -24,7 +24,7 @@ import sympy as sp
 from sympy.abc import x, y, z, t
 
 from ..mesh import GroupedBCs
-from .math_functions import H
+from .helper_functions import H
 
 BC_TEMPLATE = "@njit(inline='always', cache=True)\n" + \
               "def {}(t):\n" + \

@@ -23,6 +23,7 @@ import numpy as np
 from numba import njit
 from scipy.integrate import solve_ivp
 
+from .helper_functions import generate_t_eval
 from ..config_functions import ConfigParser
 from ..mesh import GroupedBCs
 
@@ -80,6 +81,8 @@ def solve_system(
 
     assert first_timestep > 0
 
+    t_eval = generate_t_eval(config_parser)
+
     if os.path.exists('reaction_code_gen.py'):
         os.remove('reaction_code_gen.py')
 
@@ -131,7 +134,7 @@ def solve_system(
 
     args = (Q_div_v, c_shape, reactions, bcs)
 
-    output = solve_ivp(ddt, t_span, c0, method=solver, atol=atol, rtol=rtol, args=args, first_step=first_timestep)
+    output = solve_ivp(ddt, t_span, c0, method=solver, atol=atol, rtol=rtol, args=args, first_step=first_timestep, t_eval=t_eval)
     t: np.ndarray = output.t
     c: np.ndarray = output.y
     c = c.reshape(c_shape + t.shape)  # (num_species, num_points, num_timesteps)
