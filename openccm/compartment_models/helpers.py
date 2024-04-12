@@ -81,6 +81,9 @@ def tweak_compartment_flows(
         grouped_bcs:            GroupedBCs object for identifying which connections belong to domain inlets/outlets.
         atol_opt:               Absolute tolerance for evaluating conservation of mass of the optimized system
         rtol_opt:               Relative tolerance for evaluating conservation of mass of the optimized system
+
+    Returns:
+        Nothing. Values are changed implicitly
     """
     # Small epsilon for conservation of mass to ensure that net flow is always positive.
     # Using 0 can cause floating point addition problems when the flow get close to summing to zero.
@@ -132,16 +135,17 @@ def tweak_compartment_flows(
     print("BEFORE: AVG abs error: {:.4e}".format(np.mean(abs(b)) * v_min + eps))
 
     # Solve the equation
-    results = linprog(c, A_ub=A, b_ub=b, bounds=(0, None), method='highs', integrality=1)
+    results = linprog(c, A_ub=A, b_ub=b, bounds=(0, None), method='highs', integrality=2)
     if not results["success"]:
         raise Exception("Flow optimization did not converge. \n" +
                         "Message:" + results["message"])
 
     adjustments: np.ndarray = results["x"]
-    assert np.all(adjustments >= 0.0)
+    # Values should be positive but will sometimes come out negative with values like -1e-12 and v_min is 1e-05.
+    # These values are essentially zero.
+    assert np.all(adjustments >= -eps / v_min)
 
     b_new = b - A @ adjustments
-    assert np.all(b_new >= 0)
     print("AFTER:  MAX abs error: {:.4e}".format(np.max(b_new) * v_min + eps))
     print("AFTER:  AVG abs error: {:.4e}".format(np.mean(b_new) * v_min + eps))
 
@@ -196,12 +200,21 @@ def tweak_final_flows(
     Constraints:  Mass balance around each PFR
     Objective:    Minimize the total amount adjustment
 
+    See tweak_compartment_flows for an in-depth description
+
     Args:
-        connections:
-        volumetric_flows:
-        domain_inlet_outlets:
-        atol_opt:                   Absolute tolerance for evaluating conservation of mass of the optimized system
-        rtol_opt:                   Relative tolerance for evaluating conservation of mass of the optimized system
+        connection_pairing:     Dictionary storing info about which other compartments a given compartment is connected to
+                                    - First key is compartment ID
+                                    - Values is a Dict[int, int]
+                                        - Key is connection ID (positive inlet into this compartment, negative is outlet)
+                                        - Value is the ID of the compartment on the other side
+        volumetric_flows:       Dictionary of the magnitude of volumetric flow through each connection,
+                                    indexed by connection ID.
+                                    Connection ID in this dictionary is ALWAYS positive, need to take absolute sign of
+                                    the value if it's negative (see `connection_pairing` docstring)
+        grouped_bcs:            GroupedBCs object for identifying which connections belong to domain inlets/outlets.
+        atol_opt:               Absolute tolerance for evaluating conservation of mass of the optimized system
+        rtol_opt:               Relative tolerance for evaluating conservation of mass of the optimized system
 
     Returns:
         Nothing. Values are changed implicitly
@@ -269,13 +282,15 @@ def tweak_final_flows(
     print("BEFORE: MAX abs error: {:.4e}".format(np.max(abs(b)) * v_min))
     print("BEFORE: AVG abs error: {:.4e}".format(np.mean(abs(b)) * v_min))
     # Solve the equation
-    results = linprog(c, A_eq=a, b_eq=b, bounds=(0, None))
+    results = linprog(c, A_eq=a, b_eq=b, bounds=(0, None), integrality=2)
     if not results["success"]:
         raise Exception("Flow optimization did not converge. \n" +
                         "Message:" + results["message"])
 
     adjustments: np.ndarray = results["x"]
-    # assert np.all(adjustments >= 0)
+    # Values should be positive but will sometimes come out negative with values like -1e-12 and v_min is 1e-05.
+    # These values are essentially zero.
+    assert np.all(adjustments >= -1e-6 / v_min)
 
     b_new = np.abs(a @ adjustments - b)
     print("AFTER:  MAX abs error: {:.4e}".format(np.max(b_new) * v_min))
