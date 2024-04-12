@@ -127,12 +127,12 @@ def _create_bc_mappings(mesh: 'ngsolve.Mesh', grouped_bcs: GroupedBCs) -> Tuple[
     return facet_to_bc_id_map, bc_name_to_facet_map
 
 
-def _create_element_connectivity(mesh: 'ngsolve.Mesh', all_elements: Tuple['ngsolve.comp.Ngs_Element']) -> Dict[int, List[int]]:
+def _create_element_connectivity(mesh: 'ngsolve.Mesh', all_elements: Tuple['ngsolve.comp.Ngs_Element']) -> Tuple[Tuple[int, ...], ...]:
     """
     Returns:
         neighbours_all: A tuple of the IDs of all neighbouring elements of a given element ID, indexed by that ID.
     """
-    neighbours_all: Dict[int, List[int]] = dict()
+    neighbours_all: List[Tuple[int], ...] = []
 
     for element in all_elements:
         # Using a set, rather than a list, to make handling of duplicates trivial
@@ -145,9 +145,9 @@ def _create_element_connectivity(mesh: 'ngsolve.Mesh', all_elements: Tuple['ngso
         # Make sure that an element isn't listed as its own neighbour
         neighbours_of_element.remove(element.nr)
 
-        neighbours_all[element.nr] = sorted(neighbours_of_element)
+        neighbours_all.append(tuple(sorted(neighbours_of_element)))
 
-    return neighbours_all
+    return tuple(neighbours_all)
 
 
 def _create_facet_connectivity(mesh: 'ngsolve.Mesh') -> Tuple[Tuple[int, ...], ...]:

@@ -163,7 +163,7 @@ def _get_facet_element_info(owner: np.ndarray, neighbour: np.ndarray) -> Tuple[
     return tuple(facet_elements), element_facets_tuple
 
 
-def _create_element_connectivity(neighbour: np.ndarray, owner: np.ndarray) -> Dict[int, List[int]]:
+def _create_element_connectivity(neighbour: np.ndarray, owner: np.ndarray) -> Tuple[Tuple[int, ...], ...]:
     """
     Create element connectivity.
 
@@ -182,8 +182,8 @@ def _create_element_connectivity(neighbour: np.ndarray, owner: np.ndarray) -> Di
     for i in range(len(neighbour)):
         element_connectivity[    owner[i]].add(neighbour[i])
         element_connectivity[neighbour[i]].add(owner[i])
-        
-    return {element: sorted(neighbours) for element, neighbours in element_connectivity.items()}
+
+    return tuple(tuple(sorted(element_connectivity[element])) for element in sorted(element_connectivity.keys()))
 
 
 def _get_element_vertices(element_facets: Tuple[Tuple[int, ...], ...], facet_vertices: Tuple[Tuple[int, ...], ...]) -> Tuple[Tuple[int, ...], ...]:
