@@ -16,7 +16,7 @@
 ########################################################################################################################
 
 from typing import Dict, List, Set, Tuple
-
+from collections import OrderedDict
 import numpy as np
 
 from ..config_functions import ConfigParser
@@ -293,13 +293,18 @@ def calculate_compartments(dir_vec:         np.ndarray,
     bcs_for_seed_to_facet_map = {bc_id: np.where(mesh.facet_to_bc_map == bc_id)[0] for bc_id in bcs_ids_for_seeds}
 
     # Convert facet IDs to element IDs
-    bc_elements_for_seed = []
+    # Using OrderedDict with values of None since we need:
+    #   1. Maintained insertion order (Set won't do).
+    #   2. Cheap lookup if an entry exists (List won't do).
+    #   3. Easy way to pop from the top (Dict won't work, and deque doesn't have #2).
+    bc_elements_for_seed: OrderedDict[int, None] = OrderedDict()
     for bc_id, facet_ids in bcs_for_seed_to_facet_map.items():
         for id_facet in facet_ids:
             id_element = mesh.facet_elements[id_facet]
             assert len(id_element) == 1  # If on a BC, this facet should only be shared by one element
-            bc_elements_for_seed.append(id_element[0])
-    bc_elements_for_seed = list(set(bc_elements_for_seed).difference(compartment_of_removed_elements))
+            bc_elements_for_seed[id_element[0]] = None
+    for removed_element in compartment_of_removed_elements:
+        bc_elements_for_seed.pop(removed_element, None)
 
     # Wrapping function to allow for numba usage (which has not been implemented)
     compartment_list = _calculate_compartments(valid_elements, dir_vec, mesh, bc_elements_for_seed, config_parser)
@@ -727,7 +732,7 @@ def connect_compartments_using_unidirectional_assumptions(compartment_network:  
 def _calculate_compartments(elements_not_in_a_compartment:  Set[int],
                             n_vec:                          np.ndarray,
                             mesh:                           CMesh,
-                            bc_facets_for_seed:             List[int],
+                            seeds:                          OrderedDict[int, None],
                             config_parser:                  ConfigParser) \
         -> List[Set[int]]:
     """
@@ -752,7 +757,7 @@ def _calculate_compartments(elements_not_in_a_compartment:  Set[int],
         n_vec:                          The direction vector, NxD where N is the number of elements in the mesh
                                         and D the dimension of the mesh.
         mesh:                           The mesh on which the compartmentalization is occurring.
-        bc_facets_for_seed:             List of facets IDs to use as the initial seeds.
+        seeds:                          OrderedDict of element IDs used as seeds.
         config_parser:                  ConfigParser from which to get parameters.
     """
     ####################################################################################################################
@@ -766,9 +771,6 @@ def _calculate_compartments(elements_not_in_a_compartment:  Set[int],
 
     compartments: List[Set[int]] = []
 
-    # Copy since we'll be changing it
-    seeds = bc_facets_for_seed.copy()
-
     with open(log_folder_path + 'compartments.txt', 'w') as logging:
         while len(elements_not_in_a_compartment) > 0:
             ################################################################################################################
@@ -780,7 +782,7 @@ def _calculate_compartments(elements_not_in_a_compartment:  Set[int],
             if len(seeds) == 0:
                 element_seed = elements_not_in_a_compartment.pop()
             else:
-                element_seed = seeds.pop(0)
+                element_seed = seeds.popitem(last=False)[0]
                 elements_not_in_a_compartment.remove(element_seed)
 
             if DEBUG: logging.write("* Seed used: {}".format(element_seed))
@@ -824,17 +826,9 @@ def _calculate_compartments(elements_not_in_a_compartment:  Set[int],
                 ######
                 # 3.1 If there are no neighbours above the specified threshold go to 6.
                 ######
-                _new_seeds = []
                 if ~np.any(check):
                     if DEBUG: logging.write(' - Failed 3.1\n')
-                    for neighbour in neighbouring_candidates:
-                        if neighbour not in seeds:
-                            _new_seeds.append(neighbour)
-
-                    if len(_new_seeds) > 0:
-                        _new_seeds.sort()
-                        if DEBUG: logging.write("\t new seeds: {}\n".format(_new_seeds))
-                        seeds.extend(_new_seeds)
+                    seeds.update(((neighbour, None) for neighbour in neighbouring_candidates))
                     break
                 neighbours_rejected = neighbouring_candidates_np[~check]
                 neighbouring_candidates_np = neighbouring_candidates_np[check]
@@ -853,17 +847,9 @@ def _calculate_compartments(elements_not_in_a_compartment:  Set[int],
                 ######
                 # 4.1 If there are no neighbours above the specified threshold go to 6.
                 ######
-                _new_seeds = []
                 if ~np.any(check):
                     if DEBUG: logging.write(' - Failed 4.1\n')
-                    for neighbour in neighbouring_candidates:
-                        if neighbour not in seeds:
-                            _new_seeds.append(neighbour)
-
-                    if len(_new_seeds) > 0:
-                        _new_seeds.sort()
-                        if DEBUG: logging.write("\t new seeds: {}\n".format(_new_seeds))
-                        seeds.extend(_new_seeds)
+                    seeds.update(((neighbour, None) for neighbour in sorted(neighbouring_candidates)))
                     break
                 neighbours_to_add = neighbouring_candidates_np[check]
                 if DEBUG: logging.write("Added: {}\n".format(sorted(e for e in neighbours_to_add)))
@@ -874,19 +860,11 @@ def _calculate_compartments(elements_not_in_a_compartment:  Set[int],
                 elements_not_in_a_compartment.difference_update(neighbours_to_add)
                 compartment_curr.update(neighbours_to_add)
                 for neighbour in neighbours_to_add:
-                    if neighbour in seeds:
-                        seeds.remove(neighbour)
+                    seeds.pop(neighbour, None)
 
                 # Add/remove the rejected neighbours to/from the relevant sets
                 rejected_for_compartment.update(neighbours_rejected)
-                _new_seeds = []
-                for neighbour in neighbours_rejected:
-                    if neighbour not in seeds:
-                        _new_seeds.append(neighbour)
-                if len(_new_seeds) > 0:
-                    _new_seeds.sort()
-                    if DEBUG: logging.write("\t new seeds @5: {}\n".format(_new_seeds))
-                    seeds.extend(_new_seeds)
+                seeds.update(((neighbour, None) for neighbour in neighbours_rejected))
 
                 # Add (neighbour to add)'s available neighbour to the list of available neighbours for this compartment
                 all_neighbours = set()
