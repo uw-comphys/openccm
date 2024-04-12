@@ -738,7 +738,7 @@ def _calculate_compartments(elements_not_in_a_compartment:  Set[int],
     """
     Wrapped function to allow for numba usage.
 
-    Iterating one element at a time, group neighsabouring elements into compartments.
+    Iterating one element at a time, group neighbouring elements into compartments.
     The algorith works as follows:
         1. (Arbitrarily) pick a seed element from the list of seed elements
             - This list is original the list of all elements which share a facet with certain user-specified boundaries
@@ -940,8 +940,7 @@ def _remove_unwanted_elements(mesh: CMesh, dir_vec: np.ndarray) -> Tuple[Set[int
 
     # Remove all of these elements from the mesh connectivity
     for element in removed_elements:
-        for element_neighbour in mesh.element_connectivity.pop(element):
-            mesh.element_connectivity[element_neighbour].remove(element)
+        for element_neighbour in mesh.element_connectivity[element]:
             if element_neighbour not in removed_elements:
                 elements_with_neighbour_removed.add(element_neighbour)
 
@@ -966,9 +965,8 @@ def _remove_unwanted_elements(mesh: CMesh, dir_vec: np.ndarray) -> Tuple[Set[int
         # If the element is connected to only one other element/flux-BC we have to remove it.
         if num_neighbours + num_bcs <= 1:
             removed_elements.add(element)
-            for element_neighbour in mesh.element_connectivity.pop(element):
+            for element_neighbour in mesh.element_connectivity[element]:
                 elements_with_neighbour_removed.add(element_neighbour)
-                mesh.element_connectivity[element_neighbour].remove(element)
 
     # Create a set of all elements and remove the removed elements from it
     valid_elements = set(i for i in range(dir_vec.shape[0]))
