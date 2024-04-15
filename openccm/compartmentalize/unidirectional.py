@@ -19,6 +19,7 @@ from typing import Dict, List, Set, Tuple
 
 import numpy as np
 
+from ..compartment_models import connect_cstr_compartments, connect_pfr_compartments
 from ..config_functions import ConfigParser
 from ..mesh import CMesh
 
@@ -352,7 +353,8 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
     DEBUG                = config_parser.get_item(['SETUP',                'DEBUG'],                bool)
     log_folder_path      = config_parser.get_item(['SETUP',                'log_folder_path'],      str)
     # The minimum size of a compartment. Units are the same as those used by the mesh.
-    min_compartment_size = config_parser.get_item(['COMPARTMENTALIZATION', 'min_compartment_size'], float)
+    min_compartment_size = config_parser.get_item(['COMPARTMENTALIZATION',  'min_compartment_size'], float)
+    model                = config_parser.get_item(['COMPARTMENT MODELLING', 'model'],                str)
 
     num_pre_merge = len(compartments)
 
@@ -376,7 +378,14 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
     #       Since the net flow version my show that flow goes A -> B, but the PFR version may show multiple connections
     #       between A and B. This is a problem since this function must return results that can be used by both the
     #       PFR and CSTR modelling approach.
-    connection_pairing = connect_compartments_using_unidirectional_assumptions(compartment_network, compartments, mesh, dir_vec, vel_vec, False, config_parser)[2]
+
+    if model == 'cstr':
+        connection_pairing, volumetric_flows = connect_cstr_compartments(compartment_network, mesh, vel_vec, config_parser)
+    elif model == 'pfr':
+        res = connect_pfr_compartments(compartment_network, compartments, mesh, dir_vec, vel_vec, False, config_parser)
+        connection_pairing, volumetric_flows = res[2], res[5]
+    else:
+        raise ValueError(f"Unsupported model type: {model}")
 
     # Remove all connections that lead to a BC since we do not want to consider them for the purpose of merging compartments
     for _id_pfr_tmp in connection_pairing:
@@ -1302,46 +1311,3 @@ def _calculate_compartment_bounds(compartment: set[int], id_compartment: int, me
     return bounding_facets
 
 
-def _group_facets_into_surfaces(facets: Set[int], mesh: CMesh) -> List[List[int]]:
-    """
-    Take a set of facets and group them together into several contiguous surfaces.
-
-    Facets are considered as being connected if they share one entity of a dimension lower than them.
-    E.g. For a 3D mesh, facets are surfaces. Two facets are considered connected if they share an edge.
-    The creation of this connectivity is handled by the creation of the CMesh.
-    This function queries the CMesh for which facet(s) a given facet is connected it.
-
-    Args:
-        facets: The set of facets to group.
-        mesh:   The CMesh on which the facets below. Used to get their connectivity.
-
-    Returns:
-        surfaces:   A list of contiguous surfaces, each represented as a list of facet IDs.
-
-    """
-    surfaces: List[List[int]] = []
-
-    while len(facets) > 0:
-        new_surface = [facets.pop()]
-        # The facet(s) last added to the compartment and whose connected facet must now be checked
-        facet_ids_to_check = {new_surface[0]}
-
-        while True:
-            neighbours = set()
-            # Get all the neighbours of the current facet
-            for facet in facet_ids_to_check:
-                neighbours.update(neighbour_facet for neighbour_facet in mesh.facet_connectivity[facet])
-
-            # Remove all those that are not available (have already been added or where never part of the set)
-            neighbours_to_add = facets.intersection(neighbours)
-
-            if len(neighbours_to_add) == 0:
-                break
-            else:
-                facet_ids_to_check = neighbours_to_add
-                new_surface.extend(neighbours_to_add)
-                facets.difference_update(neighbours_to_add)
-
-        surfaces.append(new_surface)
-
-    return surfaces

@@ -18,8 +18,8 @@ from typing import Dict, Tuple, List, Set
 
 import numpy as np
 
-from .cstr import create_cstr_network
-from .pfr import create_pfr_network
+from .cstr import create_cstr_network, connect_cstr_compartments
+from .pfr import create_pfr_network, connect_pfr_compartments
 from ..config_functions import ConfigParser
 from ..mesh import CMesh
 
