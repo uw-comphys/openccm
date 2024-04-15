@@ -21,7 +21,6 @@ from typing import Dict, List, Set, Tuple
 
 import numpy as np
 
-from ..compartmentalize import connect_compartments_using_unidirectional_assumptions
 from ..config_functions import ConfigParser
 from ..mesh import CMesh, GroupedBCs
 from .helpers import tweak_compartment_flows, tweak_final_flows
@@ -93,7 +92,7 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
     # 1. Create connections between compartments
     ####################################################################################################################
     # 1.1 Initial connections
-    results_1 = connect_compartments_using_unidirectional_assumptions(compartment_network, compartments, mesh, dir_vec, vel_vec, True, config_parser)
+    results_1 = connect_pfr_compartments(compartment_network, compartments, mesh, dir_vec, vel_vec, True, config_parser)
     id_next_connection, connection_distances, connection_pairing, compartment_network, compartments, _volumetric_flows = results_1
 
     # 1.2 Optimize connections to prevent flow reversal when creating the intra-compartment flows.
@@ -871,3 +870,291 @@ def _fix_domain_boundary_connection_ordering(inlets_and_outlets: List[Tuple[floa
                 raise AssertionError(f"Domain inlet/outlets for compartment {id_compartment} were not ordered properly")
 
     return inlets_and_outlets
+
+
+def connect_pfr_compartments(compartment_network:  Dict[int, Dict[int, Dict[int, Tuple[int, np.ndarray]]]],
+                             compartments:         Dict[int, Set[int]],
+                             mesh:                 CMesh,
+                             dir_vec:              np.ndarray,
+                             vel_vec:              np.ndarray,
+                             final:                bool,
+                             config_parser:        ConfigParser) \
+        -> Tuple[int,
+                 Dict[int, Dict[int, float]],
+                 Dict[int, Dict[int, int]],
+                 Dict[int, Dict[int, Dict[int, Tuple[int, np.ndarray]]]],
+                 Dict[int, Set[int]],
+                 Dict[int, float]]:
+    """
+    Function to take a compartment network and compartments and create the connections between them.
+    Calculates the flowrates and direction of flow between connected compartments.
+    CAN RETURN MULTIPLE CONNECTIONS BETWEEN TWO COMPARTMENTS.
+
+    A surface shared by two compartments is made up of facets, all facets below the specified threshold
+    (flow_threshold_i) are removed from the surface.
+    Then the surface is split into contiguous subsurfaces which all have the same direction of flow.
+    Each subsurface is treated as a separate connection between the two compartments that it's between.
+
+    Args:
+        compartment_network:    A dictionary representation of the compartments in the network.
+                                Keys are compartment IDs, and whose values are dictionary.
+                                    For each of those dictionaries, the keys are the index of a neighboring compartment
+                                    and the values are another dictionary.
+                                        For each of those dictionaries, the keys are the index of the bounding facet
+                                        between the two compartments, and the values Tuples.
+                                            - The first entry in the tuple is the index of the element
+                                              on the boundary inside the compartment.
+                                            - The second entry in the tuple is a numpy array representing
+                                              the unit normal for that boundary facing out of the compartment.
+        compartments:           A dictionary representation of the elements in the compartments.
+                                Keys are compartment IDs, values are sets containing the indices
+                                of the elements in the compartment.
+        mesh:                   The mesh the problem was solved on.
+        dir_vec:                Numpy array of direction vectors, row i is for element i.
+        vel_vec:                Numpy array of velocity vectors, row i is for element i.
+        final:                  If asserts and all calculations should be performed.
+                                This is set to True when function is called from merge_compartments since some may
+                                be too small for the invariants to be true.
+        config_parser:          The OpenCCM ConfigParser
+
+    Returns:
+        Tuple of two values:
+            id_next_connection:     The integer to use for the next connection ID.
+            connection_distances:   Dictionary storing the distance.
+            connection_pairing:     Dictionary storing info about which other compartments a given compartment is connected to.
+                                        - First key is compartment ID
+                                        - Values is a Dict[int, int]
+                                            - Key is connection ID (positive inlet into this compartment, negative is outlet)
+                                            - Value is the ID of the compartment on the other side
+            compartment_network:    The compartment network passed in.
+            compartments            The compartments passed in.
+            volumetric_flows:       Dictionary of the magnitude of volumetric flow through each connection,
+                                    indexed by connection ID.
+                                    Connection ID in this dictionary is ALWAYS positive, need to take absolute sign of
+                                    the value if it's negative (see `connection_pairing` docstring).
+    """
+    print("Finding connections between compartments")
+
+    # The minimum volumetric flow required between two compartments for a connection to be added between them.
+    flow_threshold          = config_parser.get_item(['COMPARTMENT MODELLING', 'flow_threshold'],       float)
+    # The minimum volumetric flow through a facet for it to considered, facets with flow below this amount are removed.
+    flow_threshold_facet    = config_parser.get_item(['COMPARTMENT MODELLING', 'flow_threshold_facet'], float)
+    log_folder_path         = config_parser.get_item(['SETUP',                 'log_folder_path'],      str)
+    DEBUG                   = config_parser.get_item(['SETUP',                 'DEBUG'],                bool)
+
+    # Dictionary used to store the merged connection information
+    connection_distances: Dict[int, Dict[int, float]] = dict()
+    # Dictionary storing info about which other compartments a given compartment is connected to
+    connection_pairing:   Dict[int, Dict[int, int]]   = dict()
+    volumetric_flows:     Dict[int, float]            = dict()
+
+    # ID to use for the next connection
+    # NOTE: Does not start indexing at 0 so that negative and positive signs can be used as signifier of inlet/outlet
+    id_of_next_connection = 1
+
+    # Lookup for center of fluxes
+    #   The center of flux is calculated as the weight average position of each flux facet
+    #   The weighting is the fraction of the total flux that comes through each facet
+    #   The position of each facet is the mean of all of its vertices
+    centers_of_flow_for_connection: Dict[int, np.ndarray] = dict()
+    with open(log_folder_path + 'connect' + ('' if final else '_for_merge') + '.txt', 'w') as logging:
+        # Calculate the number of connections between compartments and their locations
+        for id_compartment in compartment_network:
+            # Inlets and outlets for this compartment.
+            #   Key is connection ID, value is the ID of the other compartment
+            #   A negative key represents an outlet and a positive an inlet
+            compartment_connections: Dict[int, int] = dict()
+
+            # Calculate flowrate, center of flow, and inlet/outlet status for all connection for this compartment
+            for neighbour in compartment_network[id_compartment]:
+                # Iterate over all of connection_pairing and grab all connections from there
+                id_connections_for_compartment_neighbour_pair: List[int] = []
+                if id_compartment in connection_pairing.get(neighbour, {}).values():
+                    for _id_connection, _id_compartment in connection_pairing.get(neighbour, {}).items():
+                        if _id_compartment == id_compartment:
+                            # If connection was an inlet to the other compartment, it's an outlet to this one.
+                            id_connections_for_compartment_neighbour_pair.append(-_id_connection)
+                            # Do not exit early since there could be multiple connections
+
+                if len(id_connections_for_compartment_neighbour_pair) > 0:  # This pairing already processed, grab data
+                    for id_connection in id_connections_for_compartment_neighbour_pair:
+                        compartment_connections[id_connection] = neighbour
+                else:
+                    """
+                    1. Calculate and store the flowrate through each facet.
+                    2. Calculate the total flowrate with all facets.
+                    3. If it's below the total flow threshold, delete this connection and stop.
+                    4. Mark and remove all facets which are below the individual flow threshold.
+                    5. Calculate the total flowrate with the remaining facets
+                    6. Split the surface into contiguous blocks with the same sign (inlet/outlet)
+                    7. For each resulting contiguous surface calculate the total flowrate through it and if its an inlet/outlet
+                       - Calculate the fraction of the total flow remaining (the total flow obtained) passing through each surface
+                       - Multiply that fraction by the total flowrate obtained when ALL edges are considered.
+                       - NOTE: This is done is order for mass to be better conserved.
+                    8. Calculate the center of flow for each surface.
+                    9. Store the results
+                    """
+                    neighbour_dict: Dict[int, Tuple[int, np.ndarray]] = compartment_network[id_compartment][neighbour]
+
+                    ###
+                    # 1. Calculate and store the flowrate through each facet.
+                    ###
+                    flow_through_facet: Dict[int, float] = dict()
+                    for id_facet in neighbour_dict:
+                        element_on_this_side_of_bound_id, normal = neighbour_dict[id_facet]
+                        velocity_vector = vel_vec[element_on_this_side_of_bound_id]
+                        flux = np.dot(velocity_vector, normal)
+                        flow_through_facet[id_facet] = flux * mesh.facet_size[id_facet]
+
+                    ###
+                    # 2. Calculate the total flowrate with all facets.
+                    ###
+                    total_flow = sum(flow_through_facet.values())
+
+                    ###
+                    # 3. If it's below the total flow threshold, delete this connection and stop.
+                    ###
+                    if final and np.abs(total_flow) < flow_threshold:
+                        continue
+
+                    ###
+                    # 4. Mark and remove all facets which are below the individual flow threshold.
+                    ###
+                    for id_facet in list(flow_through_facet.keys()):
+                        if np.abs(flow_through_facet[id_facet]) < flow_threshold_facet:
+                            flow_through_facet.pop(id_facet)
+
+                    ###
+                    # 5. Calculate the total flowrate with the remaining facets
+                    ###
+                    total_flow_thresholded = sum(flow_through_facet.values())
+
+                    ###
+                    # 6. Split the surface into contiguous blocks with the same sign (inlet/outlet)
+                    ###
+                    # NOTE: One potential issue to look out for is that this may result a single surface being broken up
+                    #       into many tiny surfaces.
+                    inlet_facets: Set[int] = set()
+                    outlet_facet: Set[int] = set()
+                    for id_facet, flow_value in flow_through_facet.items():
+                        # Flow calculated with normal facing out of the compartment
+                        # Negative values are in the opposite direction of the
+                        if flow_value < 0:
+                            inlet_facets.add(id_facet)
+                        else:
+                            outlet_facet.add(id_facet)
+
+                    surfaces: List[List[int]] = []
+                    surfaces.extend(_group_facets_into_surfaces(inlet_facets, mesh))
+                    surfaces.extend(_group_facets_into_surfaces(outlet_facet, mesh))
+
+                    ###
+                    # 7. For each resulting contiguous surface calculate the total flowrate through it and if its an inlet/outlet
+                    ###
+                    flow_through_surfaces: Dict[int, float] = {}
+                    for i, surface in enumerate(surfaces):
+                        flow_through_surfaces[i] = sum(flow_through_facet[id_facet] for id_facet in surface) * total_flow / total_flow_thresholded
+
+                    ###
+                    #  8. Calculate the center of flow for each surface.
+                    #  9. Store the results
+                    ###
+                    for i, flowrate in flow_through_surfaces.items():
+                        if final:
+                            center_of_flow = np.sum([abs(flow_through_facet[facet]) * mesh.facet_centers[facet] for facet in surfaces[i]], 0)
+                            center_of_flow /= abs(flow_through_surfaces[i])
+
+                            centers_of_flow_for_connection[id_of_next_connection] = center_of_flow
+                            volumetric_flows[id_of_next_connection] = abs(flowrate)
+
+                        if flowrate < 0:  # Inlet
+                            compartment_connections[id_of_next_connection] = neighbour
+                        else:  # Outlet
+                            compartment_connections[-id_of_next_connection] = neighbour
+                        id_of_next_connection += 1
+
+            if final:
+                # Must have at least one inlet or outlet. Otherwise, something has gone horrible wrong.
+                assert len(compartment_connections) > 1
+
+                # Calculate average direction
+                avg_direction = np.mean(dir_vec[sorted(compartments[id_compartment])], 0)
+                avg_direction /= np.linalg.norm(avg_direction)
+                if DEBUG:
+                    logging.write(f"avg_direction {id_compartment} = {avg_direction}\n")
+
+                # Calculate the ordering of the inlets/outlets
+                # Project centers of flux onto average direction
+                # Min and max values for normalizing between 0.0 and 1.0
+                # (setting to inf and -inf so that the min and max always work).
+                dot_min, dot_max = np.inf, -np.inf
+                connections_distances_i: Dict[int, float] = dict()
+                for id_connection in compartment_connections:
+                    center_of_flow = centers_of_flow_for_connection[abs(id_connection)]
+                    dot_val = avg_direction.dot(center_of_flow)
+
+                    dot_min, dot_max = min(dot_min, dot_val), max(dot_max, dot_val)
+                    connections_distances_i[id_connection] = dot_val
+
+                # Normalize between 0.0 and 1.0
+                delta_dot = dot_max - dot_min
+                for id_connection in connections_distances_i:
+                    connections_distances_i[id_connection] = (connections_distances_i[id_connection] - dot_min) / delta_dot
+
+                connection_distances[id_compartment] = connections_distances_i
+            connection_pairing[id_compartment] = compartment_connections
+
+        if DEBUG:
+            logging.write("id_of_next_connection: {}\n".format(id_of_next_connection))
+            logging.write("connection_pairing: {}\n".format(connection_pairing))
+            logging.write("compartment_network: {}\n".format(compartment_network))
+            logging.write("compartments: {}\n".format(compartments))
+            logging.write("volumetric_flows: {}\n".format(volumetric_flows))
+
+    print("Done finding connections between compartments")
+    return id_of_next_connection, connection_distances, connection_pairing, compartment_network, compartments, volumetric_flows
+
+
+def _group_facets_into_surfaces(facets: Set[int], mesh: CMesh) -> List[List[int]]:
+    """
+    Take a set of facets and group them together into several contiguous surfaces.
+
+    Facets are considered as being connected if they share one entity of a dimension lower than them.
+    E.g. For a 3D mesh, facets are surfaces. Two facets are considered connected if they share an edge.
+    The creation of this connectivity is handled by the creation of the CMesh.
+    This function queries the CMesh for which facet(s) a given facet is connected it.
+
+    Args:
+        facets: The set of facets to group.
+        mesh:   The CMesh on which the facets below. Used to get their connectivity.
+
+    Returns:
+        surfaces:   A list of contiguous surfaces, each represented as a list of facet IDs.
+
+    """
+    surfaces: List[List[int]] = []
+
+    while len(facets) > 0:
+        new_surface = [facets.pop()]
+        # The facet(s) last added to the compartment and whose connected facet must now be checked
+        facet_ids_to_check = {new_surface[0]}
+
+        while True:
+            neighbours = set()
+            # Get all the neighbours of the current facet
+            for facet in facet_ids_to_check:
+                neighbours.update(neighbour_facet for neighbour_facet in mesh.facet_connectivity[facet])
+
+            # Remove all those that are not available (have already been added or where never part of the set)
+            neighbours_to_add = facets.intersection(neighbours)
+
+            if len(neighbours_to_add) == 0:
+                break
+            else:
+                facet_ids_to_check = neighbours_to_add
+                new_surface.extend(neighbours_to_add)
+                facets.difference_update(neighbours_to_add)
+
+        surfaces.append(new_surface)
+
+    return surfaces

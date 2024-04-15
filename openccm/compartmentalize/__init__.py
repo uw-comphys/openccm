@@ -15,5 +15,4 @@
 # <https://www.gnu.org/licenses/>.                                                                                     #
 ########################################################################################################################
 
-from .unidirectional import calculate_compartments, connect_compartments_using_unidirectional_assumptions, \
-                            create_compartment_network
+from .unidirectional import calculate_compartments, create_compartment_network

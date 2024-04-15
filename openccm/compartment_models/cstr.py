@@ -23,10 +23,10 @@ from ..config_functions import ConfigParser
 from ..mesh import CMesh, GroupedBCs
 
 
-def _connect_cstr_compartments(compartment_network: Dict[int, Dict[int, Dict[int, Tuple[int, np.ndarray]]]],
-                               mesh: CMesh,
-                               v_vec: np.ndarray,
-                               config_parser: ConfigParser) \
+def connect_cstr_compartments(compartment_network: Dict[int, Dict[int, Dict[int, Tuple[int, np.ndarray]]]],
+                              mesh: CMesh,
+                              v_vec: np.ndarray,
+                              config_parser: ConfigParser) \
         -> Tuple[Dict[int, Dict[int, int]],
                  Dict[int, float]]:
     """
@@ -49,7 +49,6 @@ def _connect_cstr_compartments(compartment_network: Dict[int, Dict[int, Dict[int
         config_parser:          The OpenCCM ConfigParser.
 
     Returns:
-        id_next_connection:     The integer to use for the next connection ID
         connection_pairing:     Dictionary storing info about which other compartments a given compartment is connected to
                                 - Key is compartment ID
                                 - Values is a Dict[int, int]
@@ -166,7 +165,7 @@ def create_cstr_network(compartments:           Dict[int, Set[int]],
     ####################################################################################################################
     # 1. Create connections between compartments
     ####################################################################################################################
-    connection_pairing, _volumetric_flows = _connect_cstr_compartments(compartment_network, mesh, vel_vec, config_parser)
+    connection_pairing, _volumetric_flows = connect_cstr_compartments(compartment_network, mesh, vel_vec, config_parser)
 
     ####################################################################################################################
     # 2. Calculate volume of each compartment
