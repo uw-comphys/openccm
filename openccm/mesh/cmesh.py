@@ -88,7 +88,7 @@ class CMesh:
                  facet_connectivity: Tuple[Tuple[int, ...], ...],
                  element_facets: Tuple[Tuple[int, ...], ...],
                  element_vertices: Tuple[Tuple[int, ...], ...],
-                 element_connectivity: Dict[int, List[int]],
+                 element_connectivity: Tuple[Tuple[int, ...], ...],
                  element_sizes: np.ndarray,
                  grouped_bcs: GroupedBCs,
                  facet_to_bc_map: np.ndarray,

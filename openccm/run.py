@@ -93,26 +93,24 @@ def run(config_parser_or_file: Union[ConfigParser, str]) -> Dict[str, int]:
 
     # Calculate the compartments
     start = perf_counter_ns()
-    if cache_info.already_made_compartments and cache_info.already_made_cfmesh_pruned:
+    if cache_info.already_made_cmesh:
+        with open(cache_info.name_cmesh, 'rb') as handle:
+            c_mesh: CMesh = pickle.load(handle)
+    else:
+        c_mesh = convert_mesh(OpenCMP, config_parser, mesh=mesh if OpenCMP else None)
+        with open(cache_info.name_cmesh, 'wb') as handle:
+            pickle.dump(c_mesh, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    timing_dict['Create CMesh'] = perf_counter_ns() - start
+
+    start = perf_counter_ns()
+    if cache_info.already_made_compartments:
         with open(cache_info.name_compartments, 'rb') as handle:
             compartments = pickle.load(handle)
-        with open(cache_info.name_cmesh_pruned, 'rb') as handle:
-            c_mesh = pickle.load(handle)
     else:
-        if cache_info.already_made_cfmesh:
-            with open(cache_info.name_cmesh, 'rb') as handle:
-                c_mesh: CMesh = pickle.load(handle)
-        else:
-            c_mesh = convert_mesh(OpenCMP, config_parser, mesh=mesh if OpenCMP else None)
-            with open(cache_info.name_cmesh, 'wb') as handle:
-                pickle.dump(c_mesh, handle, protocol=pickle.HIGHEST_PROTOCOL)
-        timing_dict['Create CMesh'] = perf_counter_ns() - start
-
         compartments, _ = calculate_compartments(dir_vec, c_mesh, config_parser)
         with open(cache_info.name_compartments, 'wb') as handle:
             pickle.dump(compartments, handle, protocol=pickle.HIGHEST_PROTOCOL)
-        with open(cache_info.name_cmesh_pruned, 'wb') as handle:
-            pickle.dump(c_mesh, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    timing_dict['Compartmentalize'] = perf_counter_ns() - start
 
     if not cache_info.already_made_cm_info_vtu:
         if OpenCMP:
@@ -122,6 +120,7 @@ def run(config_parser_or_file: Union[ConfigParser, str]) -> Dict[str, int]:
             label_compartments_openfoam('compartments_pre', compartments, config_parser)
 
     # Turn the compartments into a network
+    start = perf_counter_ns()
     if cache_info.already_made_compartment_network:
         with open(cache_info.name_compartment_network, 'rb') as handle:
             compartment_network = pickle.load(handle)
@@ -132,7 +131,7 @@ def run(config_parser_or_file: Union[ConfigParser, str]) -> Dict[str, int]:
             pickle.dump(compartments, handle, protocol=pickle.HIGHEST_PROTOCOL)
         with open(cache_info.name_compartment_network, 'wb') as handle:
             pickle.dump(compartment_network, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    timing_dict['Compartmentalize'] = perf_counter_ns() - start
+    timing_dict['Compartment Network'] = perf_counter_ns() - start
 
     # Label each element with the compartment ID it belongs to after merging small compartments
     if not cache_info.already_made_cm_info_vtu:
@@ -160,7 +159,7 @@ def run(config_parser_or_file: Union[ConfigParser, str]) -> Dict[str, int]:
         model_network = create_model_network(model, compartments, compartment_network, c_mesh, vel_vec, dir_vec, config_parser)
         with open(cache_info.name_model_network, 'wb') as handle:
             pickle.dump(model_network, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    timing_dict['Compartment Modelling'] = perf_counter_ns() - start
+    timing_dict['Reactor Network'] = perf_counter_ns() - start
 
     # Visualize the CSTR/PFR network
     if visualize_network:
@@ -195,7 +194,7 @@ def run(config_parser_or_file: Union[ConfigParser, str]) -> Dict[str, int]:
                                 system_results, model_network, compartments, config_parser, c_mesh,
                                 mesh=mesh if OpenCMP else None,
                                 n_vec=dir_vec if OpenCMP else None)
-        timing_dict['Export to VTK'] = perf_counter_ns() - start
+        timing_dict['VTU Export'] = perf_counter_ns() - start
 
     return timing_dict
 
@@ -210,7 +209,6 @@ class CacheInfo:
         OpenCMP             = config_parser.get('INPUT', 'opencmp_sol_file_path', fallback=None) is not None
 
         self.name_cmesh                 = tmp_folder_path + 'cmesh.pickle'
-        self.name_cmesh_pruned          = tmp_folder_path + 'cmesh_pruned.pickle'
         self.name_compartments          = tmp_folder_path + 'compartments.pickle'
         self.name_compartment_network   = tmp_folder_path + 'compartment_network.pickle'
         self.name_direction_sol         = tmp_folder_path + 'n_gfu.sol'
@@ -227,12 +225,11 @@ class CacheInfo:
                                                        and isfile(self.name_refined_mesh)
                                                        and isfile(self.name_velocity_info))
 
-        self.already_made_cfmesh                = isfile(self.name_cmesh)
-        self.already_made_cfmesh_pruned         = isfile(self.name_cmesh_pruned)
+        self.already_made_cmesh                = isfile(self.name_cmesh)
         self.already_made_compartments          = isfile(self.name_compartments)
         self.already_made_compartment_network   = isfile(self.name_compartment_network)
         self.already_made_cm_info_vtu           = isfile(self.name_model_info + '.vtu')
         self.already_made_model_network         = isfile(self.name_model_network)
 
         self.need_opencmp_mesh = OpenCMP and (output_VTK
-                                              or not (self.already_made_cfmesh and self.already_made_cm_info_vtu))
+                                              or not (self.already_made_cmesh and self.already_made_cm_info_vtu))
