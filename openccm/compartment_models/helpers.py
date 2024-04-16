@@ -40,15 +40,23 @@ def tweak_compartment_flows(
       This is requirement is needed by the Compartment -> PFR method, having even a small net outflow will result in the
       intra-compartment connections that get made to cause a reversal of flow.
 
-    A balance around each PFR is written as follows:
+    The first mass balance inequality written around each PFR is to ensure that there is a small netflow (epsilon)
+    To ensure it's positive even after any small floating point precision issues.
     Σ_inlets (Q + x) - Σ_outlets(Q + x) >= eps
-    Σ (Q_in - Q_out) + Σ (x_in - x_out) >= eps
-    Σ (Q_in - Q_out)                    >= -Σ (x_in - x_out) + eps
-    Σ (- x_in + x_out)                  <=  Σ (Q_in - Q_out) - eps
+    (ΣQ_in - ΣQ_out) + (Σx_in - Σx_out) >= eps
+    (ΣQ_in - ΣQ_out)                    >= eps  - (Σx_in - Σx_out)
+    (-Σx_in + Σx_out)                   <= -eps + (ΣQ_in - ΣQ_out)
+
+    The second mass balance inequality is to put an upper bound on the net flow into the compartment
+    Σ_inlets (Q + x) - Σ_outlets(Q + x) <= atol_opt
+    (ΣQ_in - ΣQ_out) + (Σx_in - Σx_out) <= atol_opt
+    (Σx_in - Σx_out)                    <= atol_opt - (ΣQ_in - ΣQ_out)
 
     Where:
         - Q is the current flowrate through a connection
         - x is the non-negative adjustment to a given connection
+        - eps is a small value used to avoid floating point issues when calculating the net flow.
+        - atol_opt is the absolute tolerance for the conservation of mass, the maximum allowable net inflow.
 
     The system being solved is:
         minimize:   x_vec
@@ -62,10 +70,11 @@ def tweak_compartment_flows(
 
     We will accept some net inflow, but we wish to remove all of the net outflows.
 
-    The coefficients in the A matrix are as follows:
+    For the first set of constraints (the ones with eps) the coefficients in the corresponding rows of A are:
         *  0: a connection is not contributing to this compartment
         * -1: a connection is an INLET for this compartment
         * +1: a connection is an OUTLET for this compartment
+    For the second set of constraints (the ones with atol_opt) the coefficients are reversed; i.e. -1 is an OUTLET.
 
     Args:
         connection_pairing:     Dictionary storing info about which other compartments a given compartment is connected to
@@ -101,8 +110,13 @@ def tweak_compartment_flows(
     # NOTE: There are no equality constraints
 
     # Create the inequality constraint
-    A = np.zeros((len(connection_pairing), len(volumetric_flows)), dtype='b')
-    b = -eps/v_min * np.ones(len(connection_pairing))
+    n_compartments      = len(connection_pairing)
+    n_flows             = len(volumetric_flows)
+    A = np.zeros((2*n_compartments, n_flows), dtype='b')
+    b = np.ones(2*n_compartments)
+    b[:n_compartments] *= -eps/v_min
+    b[n_compartments:] *= 0.9*atol_opt/v_min  # Multiply by 0.9 to avoid any precision issues when comparing floats
+
     domain_inlet_outlet_connections = set()
     for compartment, compartment_connections in connection_pairing.items():
         for connection, compartment_other in compartment_connections.items():
@@ -113,9 +127,17 @@ def tweak_compartment_flows(
             if connection > 0:  # Inlet
                 A[compartment, con_to_index[connection]] = -1
                 b[compartment] += volumetric_flows[connection]
+
+                # Meant to have opposite sign since equation is different
+                A[n_compartments + compartment, con_to_index[connection]] = 1
+                b[n_compartments + compartment] -= volumetric_flows[connection]
             else:  # Outlet
                 A[compartment, con_to_index[abs(connection)]] = 1
                 b[compartment] -= volumetric_flows[abs(connection)]
+
+                # Meant to have opposite sign since equation is different
+                A[n_compartments + compartment, con_to_index[abs(connection)]] = -1
+                b[n_compartments + compartment] += volumetric_flows[abs(connection)]
 
     # Each column which does not correspond to a domain inlet/out must sum to 0.
     for connection, i in con_to_index.items():
