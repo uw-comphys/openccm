@@ -60,7 +60,7 @@ def test_tweak_compartment_flows():
     # tweak_compartment_flows modifies in place, make a copy to see before and after
     volumetric_flows_orig = volumetric_flows.copy()
     overall_com_before, compartment_com_before = calculate_com(volumetric_flows_orig, connection_pairings)
-    tweak_compartment_flows(connection_pairings, volumetric_flows, grouped_bcs, atol_opt=1e-2, rtol_opt=0.0)
+    tweak_compartment_flows(connection_pairings, volumetric_flows, grouped_bcs, atol_opt=1e-2)
     overall_com_after,  compartment_com_after  = calculate_com(volumetric_flows, connection_pairings)
 
 

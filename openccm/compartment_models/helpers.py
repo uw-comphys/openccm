@@ -26,14 +26,13 @@ def tweak_compartment_flows(
         connection_pairing: Dict[int, Dict[int, int]],
         volumetric_flows: Dict[int, float],
         grouped_bcs: GroupedBCs,
-        atol_opt: float,
-        rtol_opt: float
+        atol_opt: float
 ) -> None:
     """
     This function is used to adjust the flowrates in the compartment network so that the net flow around a compartment
     is either 0 or slightly positive.
 
-    This is different from `tweak_cstr_pfr_flows` in a few major ways:
+    This is different from `tweak_final_flows` in a few major ways:
     - This method works balances the mass around each COMPARTMENT, that one balances the mass around each CSTR/PFR.
     - That method tries to minimize the error in the conservation of mass, accepting small deviations resulting in either
       a small net inflow or outflow.
@@ -79,8 +78,7 @@ def tweak_compartment_flows(
                                     Connection ID in this dictionary is ALWAYS positive, need to take absolute sign of
                                     the value if it's negative (see `connection_pairing` docstring)
         grouped_bcs:            GroupedBCs object for identifying which connections belong to domain inlets/outlets.
-        atol_opt:               Absolute tolerance for evaluating conservation of mass of the optimized system
-        rtol_opt:               Relative tolerance for evaluating conservation of mass of the optimized system
+        atol_opt:               Absolute tolerance for evaluating conservation of mass of the optimized system.
 
     Returns:
         Nothing. Values are changed implicitly
@@ -100,7 +98,7 @@ def tweak_compartment_flows(
     # Volumetric flows cannot be assumed to be put into the dictionary in increasing order
     con_to_index = {_id: index for index, _id in enumerate(list(volumetric_flows.keys()))}
 
-    # NOTE: There are no equality constriants
+    # NOTE: There are no equality constraints
 
     # Create the inequality constraint
     A = np.zeros((len(connection_pairing), len(volumetric_flows)), dtype='b')
@@ -159,8 +157,6 @@ def tweak_compartment_flows(
 
     # Check the conservation of mass for the system as a whole and each compartment.
     # Each compartment is checked again to try to catch any issues with the optimization setup above
-    total_inflow  = 0.0
-    total_outflow = 0.0
     missing_flow = 0.0
     for compartment, compartment_connections in connection_pairing.items():
         net_flow = 0.0
@@ -168,31 +164,24 @@ def tweak_compartment_flows(
             if connection > 0:
                 net_flow += volumetric_flows[connection]
                 if compartment_other < 0:
-                    if compartment_other in grouped_bcs.domain_inlets:
-                        total_inflow += volumetric_flows[connection]
-                    else:
-                        # Subtracting on purpose
-                        missing_flow -= volumetric_flows[connection]
+                    if compartment_other not in grouped_bcs.domain_inlets:
+                        missing_flow += volumetric_flows[connection]
             else:
                 connection = abs(connection)
                 net_flow -= volumetric_flows[connection]
                 if compartment_other < 0:
-                    if compartment_other in grouped_bcs.domain_outlets:
-                        total_outflow += volumetric_flows[connection]
-                    else:
-                        missing_flow += volumetric_flows[connection]
-
+                    if compartment_other not in grouped_bcs.domain_outlets:
+                        missing_flow -= volumetric_flows[connection]
         assert net_flow > 0
-        assert np.isclose(net_flow, 0, rtol=rtol_opt, atol=atol_opt)
-    assert np.isclose(0.0, missing_flow, rtol=rtol_opt, atol=atol_opt)
+        assert np.isclose(net_flow, 0, rtol=0, atol=atol_opt)
+    assert np.isclose(missing_flow, 0, rtol=0, atol=atol_opt)
 
 
 def tweak_final_flows(
         connections: Dict[int, Tuple[Dict[int, int], Dict[int, int]]],
         volumetric_flows: np.ndarray,
         grouped_bcs: GroupedBCs,
-        atol_opt: float,
-        rtol_opt: float
+        atol_opt: float
 ) -> None:
     """
     This function is used to adjust the flowrates in the cstr/pfr network so that mass is conserved.
@@ -203,7 +192,7 @@ def tweak_final_flows(
     See tweak_compartment_flows for an in-depth description
 
     Args:
-        connection_pairing:     Dictionary storing info about which other compartments a given compartment is connected to
+        connections:            Dictionary storing info about which other compartments a given compartment is connected to
                                     - First key is compartment ID
                                     - Values is a Dict[int, int]
                                         - Key is connection ID (positive inlet into this compartment, negative is outlet)
@@ -214,7 +203,6 @@ def tweak_final_flows(
                                     the value if it's negative (see `connection_pairing` docstring)
         grouped_bcs:            GroupedBCs object for identifying which connections belong to domain inlets/outlets.
         atol_opt:               Absolute tolerance for evaluating conservation of mass of the optimized system
-        rtol_opt:               Relative tolerance for evaluating conservation of mass of the optimized system
 
     Returns:
         Nothing. Values are changed implicitly
@@ -234,22 +222,22 @@ def tweak_final_flows(
     # Each column represents a flowrate
     a = np.zeros((len(connections), c.size), dtype='b')
     indices_of_domain_inlet_outlet = set()
-    for id_pfr in connections:
-        inlets  = connections[id_pfr][0]
-        outlets = connections[id_pfr][1]
+    for id_model in connections:
+        inlets  = connections[id_model][0]
+        outlets = connections[id_model][1]
 
         # Add adjustments for inlets
         for id_connection in inlets:
             if inlets[id_connection] < 0:
                 indices_of_domain_inlet_outlet.add(id_connection)
-            a[id_pfr, id_connection] = 1
+            a[id_model, id_connection] = 1
 
         # Subtract adjustments for outlets
         # NOTE: This needs to be the reverse of the inlets
         for id_connection in outlets:
             if outlets[id_connection] < 0:
                 indices_of_domain_inlet_outlet.add(id_connection)
-            a[id_pfr, id_connection] = -1
+            a[id_model, id_connection] = -1
 
     # Each column which does not correspond to a domain inlet/out must sum to 0.
     # Summing to zero means that each time it was marked an inlet it is also marked as an outlet.
@@ -266,10 +254,10 @@ def tweak_final_flows(
     # Create the right hand sign of the equality constraints.
     # The negative sum of existing flow (negative since moved to other side of equal sign)
     b = np.zeros((len(connections),))
-    id_pfrs = list(connections.keys())
-    for i, id_pfr in enumerate(id_pfrs):
-        inlets  = connections[id_pfr][0]
-        outlets = connections[id_pfr][1]
+    id_models = list(connections.keys())
+    for i, id_model in enumerate(id_models):
+        inlets  = connections[id_model][0]
+        outlets = connections[id_model][1]
 
         # Subtract inlets since moved to other side of equal sign
         for id_connection in inlets.keys():
@@ -302,25 +290,23 @@ def tweak_final_flows(
     volumetric_flows *= v_min
 
     # Check conservation of mass for the system as a whole
-    total_inflow  = 0.0
-    total_outflow = 0.0
+    net_flow      = 0.0
     missing_flow  = 0.0
     for inlets, outlets in connections.values():
-        for id_connection, id_pfr_other_side in inlets.items():
-            if id_pfr_other_side < 0:
-                if id_pfr_other_side in grouped_bcs.domain_inlets:
-                    total_inflow += volumetric_flows[id_connection]
-                else:
-                    # Subtracting on purpose
-                    missing_flow -= volumetric_flows[id_connection]
-        for id_connection, id_pfr_other_side in outlets.items():
-            if id_pfr_other_side < 0:
-                if id_pfr_other_side in grouped_bcs.domain_outlets:
-                    total_outflow += volumetric_flows[id_connection]
+        for id_connection, id_model_other_side in inlets.items():
+            if id_model_other_side < 0:
+                if id_model_other_side in grouped_bcs.domain_inlets:
+                    net_flow     += volumetric_flows[id_connection]
                 else:
                     missing_flow += volumetric_flows[id_connection]
-    assert np.isclose(total_inflow, total_outflow, atol=atol_opt, rtol=rtol_opt)
-    assert np.isclose(0.0,          missing_flow,  atol=atol_opt, rtol=rtol_opt)
+        for id_connection, id_model_other_side in outlets.items():
+            if id_model_other_side < 0:
+                if id_model_other_side in grouped_bcs.domain_outlets:
+                    net_flow     -= volumetric_flows[id_connection]
+                else:
+                    missing_flow -= volumetric_flows[id_connection]
+    assert np.isclose(net_flow,     0, rtol=0, atol=atol_opt)
+    assert np.isclose(missing_flow, 0, rtol=0, atol=atol_opt)
 
     # Check conservation of mass for individual components of the network
     for id_component in connections:
@@ -329,6 +315,6 @@ def tweak_final_flows(
         # Subtract the outlets
         total -= sum(volumetric_flows[id_connection] for id_connection in connections[id_component][1])
 
-        if ~np.isclose(total, 0.0, atol=atol_opt, rtol=rtol_opt):
+        if ~np.isclose(total, 0, rtol=0, atol=atol_opt):
             print("Total flowrate around component {} is not balanced. Error {}".format(id_component, total))
             assert False

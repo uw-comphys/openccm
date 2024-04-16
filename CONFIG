@@ -57,8 +57,7 @@ flow_threshold_facet    = [1e-15]
 flow_threshold          = [1e-15]
 # Maximum allowable difference (in % of compartment volume) between connections for merging them to one location.
 dist_threshold          = [5 / 100]
-# Relative and absolute tolerances for checking that conservation of mass for the liquid after the flow optimization is performed.
-rtol_opt                = [0]
+# Absolute tolerances for checking that conservation of mass for the liquid after the flow optimization is performed.
 atol_opt                = [1e-2]
 
 [SIMULATION]

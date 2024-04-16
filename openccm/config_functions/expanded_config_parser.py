@@ -39,7 +39,6 @@ config_defaults: Dict = {
     'COMPARTMENT MODELLING': {'flow_threshold': 1e-15,
                               'flow_threshold_facet': 1e-15,
                               'dist_threshold': 5. / 100,
-                              'rtol_opt': 0,
                               'atol_opt': 1e-2},
     'SIMULATION': {'run': True,
                    'points_per_pfr': 2,
