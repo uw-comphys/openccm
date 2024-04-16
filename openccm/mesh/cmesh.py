@@ -105,14 +105,19 @@ class CMesh:
         self.element_vertices       = element_vertices
         self.element_connectivity   = element_connectivity
         self.element_sizes          = element_sizes
+        self.element_sizes.flags.writeable = False
         self.grouped_bcs            = grouped_bcs
         self.facet_to_bc_map        = facet_to_bc_map
+        self.facet_to_bc_map.flags.writeable = False
         self.bc_to_facet_map        = bc_to_facet_map
 
         # These properties can be calculated all the same regardless of the source of the mesh.
         self.facet_centers          = self._calculate_facet_center()
+        self.facet_centers.flags.writeable = False
         self.facet_normals          = self._calculate_facet_normal()
+        self.facet_normals.flags.writeable = False
         self.facet_size             = self._calculate_facet_sizes()
+        self.facet_size.flags.writeable = False
 
     def _calculate_facet_center(self) -> np.ndarray:
         """
