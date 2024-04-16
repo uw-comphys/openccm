@@ -129,8 +129,8 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
     ####################################################################################################################
     # 2. Split compartment into PFRs
     ####################################################################################################################
-    output = compartments_to_pfrs(connection_locations, connection_pairing, compartment_network, volumes_compartments,
-                                  id_next_connection, _volumetric_flows)
+    output = compartments_to_pfrs(connection_locations, connection_pairing, volumes_compartments, _volumetric_flows,
+                                  len(compartment_network.keys())+1, id_next_connection)
     _volumes, _volumetric_flows, all_connection_pairing, compartment_to_pfr_map  = output
 
     ####################################################################################################################
@@ -198,12 +198,12 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
     return connections, volumes, volumetric_flows, compartment_to_pfr_map
 
 
-def compartments_to_pfrs(connection_locations: Dict[int, List[Tuple[float, List[int]]]],
-                         all_connection_pairing: Dict[int, Dict[int, int]],
-                         compartment_network: Dict[int, Dict[int, Dict[int, Tuple[int, np.ndarray]]]],
-                         volumes_compartments: Dict[int, float],
-                         id_of_next_connection: int,
-                         volumetric_flows: Dict[int, float])\
+def compartments_to_pfrs(connection_locations:      Dict[int, List[Tuple[float, List[int]]]],
+                         all_connection_pairing:    Dict[int, Dict[int, int]],
+                         volumes_compartments:      Dict[int, float],
+                         volumetric_flows:          Dict[int, float],
+                         id_of_next_pfr:            int,
+                         id_of_next_connection:     int) \
         -> Tuple[
             Dict[int, float],
             Dict[int, float],
@@ -220,12 +220,11 @@ def compartments_to_pfrs(connection_locations: Dict[int, List[Tuple[float, List[
                                     For a  detailed description see the documentation in method_name.
         all_connection_pairing:     Dictionary for looking up connectivity of a compartment.
                                     For a detailed description see the documentation in create_pfr_network.
-        compartment_network:        Compartment network.
-                                    For a detailed description see the documentation in create_compartment_network.
         volumes_compartments:       Volume of each compartment, lookup using compartment ID
+        volumetric_flows:           Volumetric flowrate through each connection, lookup using connection ID.
+        id_of_next_pfr:             ID to use for the next PFR to be made.
         id_of_next_connection:      ID to use for the next connection if one needs to be made.
                                     This value is used to ensure that each connection has a unique ID.
-        volumetric_flows:           Volumetric flowrate through each connection, lookup using connection ID.
 
     Returns:
         volumes_pfr:                Volume of each PFR, lookup using PFR ID.
@@ -251,12 +250,6 @@ def compartments_to_pfrs(connection_locations: Dict[int, List[Tuple[float, List[
             3               | 3      | 8, 9, 10
             4               | 1      | 11
     """
-    # Must use max rather than the length of the number of compartments since the compartments are no longer labeled
-    # sequentially.
-    # Merging them potentially resulted in several compartments being removed,
-    # thus (max compartment ID >= number compartments)
-    id_of_next_pfr = len(compartment_network.keys()) + 1
-
     # Split the compartment into PFRs based on the ordering of the inlets and outlets
     for id_compartment_i, connection_locations_i in connection_locations.items():
         # Information for ensure that the number of connections is correct
@@ -994,14 +987,12 @@ def connect_pfr_compartments(compartment_network:  Dict[int, Dict[int, Dict[int,
                     8. Calculate the center of flow for each surface.
                     9. Store the results
                     """
-                    neighbour_dict: Dict[int, Tuple[int, np.ndarray]] = compartment_network[id_compartment][neighbour]
 
                     ###
                     # 1. Calculate and store the flowrate through each facet.
                     ###
                     flow_through_facet: Dict[int, float] = dict()
-                    for id_facet in neighbour_dict:
-                        element_on_this_side_of_bound_id, normal = neighbour_dict[id_facet]
+                    for id_facet, (element_on_this_side_of_bound_id, normal) in compartment_network[id_compartment][neighbour].items():
                         velocity_vector = vel_vec[element_on_this_side_of_bound_id]
                         flux = np.dot(velocity_vector, normal)
                         flow_through_facet[id_facet] = flux * mesh.facet_size[id_facet]
