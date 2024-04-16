@@ -42,7 +42,7 @@ def connect_cstr_compartments(compartment_network: Dict[int, Dict[int, Dict[int,
                                   and the values are another dictionary.
                                     - For each of those dictionaries, the keys are the index of the bounding entity
                                       between the two compartments, and the values are Tuples of two values.
-                                        - The 1st is the index of the element on the boundary inside the compartment.
+                                        - The 1st is the index of the element upwind of that boundary facet.
                                         - The 2nd is the outward facing unit normal for that boundary facet.
         mesh:                   The mesh the problem was solved on.
         v_vec:                  Numpy array of velocity vectors, row indexed by element id.
@@ -89,12 +89,8 @@ def connect_cstr_compartments(compartment_network: Dict[int, Dict[int, Dict[int,
                     net_flow = 0.0
 
                     neighbour_dict: Dict[int, Tuple[int, np.ndarray]] = compartment_network[id_compartment][id_neighbour]
-                    for facet in neighbour_dict:
-                        facet_size = mesh.facet_size[facet]
-                        element_on_this_side_of_bound_id, normal = neighbour_dict[facet]
-                        velocity_vector = v_vec[element_on_this_side_of_bound_id]
-                        flux = np.dot(velocity_vector, normal)
-                        net_flow += flux * facet_size
+                    for facet, (upwind_element, normal) in neighbour_dict.items():
+                        net_flow += normal.dot(v_vec[upwind_element]) * mesh.facet_size[facet]
 
                     # If the flow is below the threshold, don't add the connection.
                     if abs(net_flow) < flow_threshold:
@@ -144,7 +140,7 @@ def create_cstr_network(compartments:           Dict[int, Set[int]],
                                   and the values are another dictionary.
                                     - For each of those dictionaries, the keys are the index of the bounding entity
                                       between the two compartments, and the values are Tuples of two values.
-                                        - The 1st is the index of the element on the boundary inside the compartment.
+                                        - The 1st is the index of the element upwind of that boundary facet.
                                         - The 2nd is the outward facing unit normal for that boundary facet.
         mesh:                   The mesh containing the compartments.
         vel_vec:                Numpy array of velocity vectors, row i is for element i.

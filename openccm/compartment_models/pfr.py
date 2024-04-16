@@ -54,10 +54,8 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
                                     and the values are another dictionary.
                                         For each of those dictionaries, the keys are the index of the bounding entity
                                         between the two compartments, and the values Tuples.
-                                            - The first entry in the tuple is the index of the element
-                                              on the boundary inside the compartment.
-                                            - The second entry in the tuple is a numpy array representing
-                                              the unit normal for that boundary facing out of the compartment.
+                                            - The 1st is the index of the element upwind of that boundary facet.
+                                            - The 2nd is the outward facing unit normal for that boundary facet.
         mesh:                   The mesh containing the compartments.
         vel_vec:                Numpy array of velocity vectors, row i is for element i.
         dir_vec:                Numpy array of direction vectors, row i is for element i.
@@ -894,10 +892,8 @@ def connect_pfr_compartments(compartment_network:  Dict[int, Dict[int, Dict[int,
                                     and the values are another dictionary.
                                         For each of those dictionaries, the keys are the index of the bounding facet
                                         between the two compartments, and the values Tuples.
-                                            - The first entry in the tuple is the index of the element
-                                              on the boundary inside the compartment.
-                                            - The second entry in the tuple is a numpy array representing
-                                              the unit normal for that boundary facing out of the compartment.
+                                            - The 1st is the index of the element upwind of that boundary facet.
+                                            - The 2nd is the outward facing unit normal for that boundary facet.
         compartments:           A dictionary representation of the elements in the compartments.
                                 Keys are compartment IDs, values are sets containing the indices
                                 of the elements in the compartment.
@@ -991,10 +987,8 @@ def connect_pfr_compartments(compartment_network:  Dict[int, Dict[int, Dict[int,
                     # 1. Calculate and store the flowrate through each facet.
                     ###
                     flow_through_facet: Dict[int, float] = dict()
-                    for id_facet, (element_on_this_side_of_bound_id, normal) in compartment_network[id_compartment][neighbour].items():
-                        velocity_vector = vel_vec[element_on_this_side_of_bound_id]
-                        flux = np.dot(velocity_vector, normal)
-                        flow_through_facet[id_facet] = flux * mesh.facet_size[id_facet]
+                    for id_facet, (upwind_element, normal) in compartment_network[id_compartment][neighbour].items():
+                        flow_through_facet[id_facet] = normal.dot(vel_vec[upwind_element]) * mesh.facet_size[id_facet]
 
                     ###
                     # 2. Calculate the total flowrate with all facets.

@@ -57,8 +57,8 @@ def create_compartment_network(compartments:    Dict[int, Set[int]],
                                     and the values are another dictionary.
                                         For each of those dictionaries, the keys are the index of the bounding facet between the two compartments,
                                         and the values are Tuples.
-                                            The first entry in the tuple is the index of the element on the boundary inside the compartment.
-                                            The second is a numpy array representing the unit normal for that boundary facing out of the compartment.
+                                            - The 1st is the index of the element upwind of that boundary facet.
+                                            - The 2nd is the outward facing unit normal for that boundary facet.
     """
     print("Creating compartment network")
 
@@ -96,10 +96,10 @@ def create_compartment_network(compartments:    Dict[int, Set[int]],
             for facet in ids_facets:
                 # Get the "element" on the other side of the bounding facet.
                 # If the facet is on the bounds of the mesh, then the element_id will be negative
-                element_on_other_side_of_bound = bounding_facets_info[facet][1]
+                element_other_side = bounding_facets_info[facet][1]
 
-                if element_on_other_side_of_bound == mesh.grouped_bcs.no_flux or element_on_other_side_of_bound in mesh.grouped_bcs.ignored or \
-                        element_on_other_side_of_bound not in element_to_compartment_map:
+                if element_other_side == mesh.grouped_bcs.no_flux or element_other_side in mesh.grouped_bcs.ignored or \
+                        element_other_side not in element_to_compartment_map:
                     bounding_facets_info.pop(facet)
 
             # If the compartment has 1 or fewer bounding entities left then it means that it does not have
@@ -147,19 +147,27 @@ def create_compartment_network(compartments:    Dict[int, Set[int]],
                 for facet in bounding_facets_info:
                     # Get the element on the other side of the bounding facet.
                     # If the facet is on the bounds of the mesh, then the element_id will be negative
-                    element_on_other_side_of_bound = bounding_facets_info[facet][1]
+                    element_other_side = bounding_facets_info[facet][1]
 
                     # Calculate the outward facing normal
-                    element_on_this_side_of_bound = bounding_facets_info[facet][0]
-                    normal = mesh.get_outward_facing_normal(facet, element_on_this_side_of_bound)
+                    element_this_side = bounding_facets_info[facet][0]
+                    normal = mesh.get_outward_facing_normal(facet, element_this_side)
+
+                    # Find which element is upwind of the bounding facet
+                    v_this_element = vel_vec[element_this_side]
+                    this_side_upwind_of_facet = normal.dot(v_this_element) > 0
+                    if this_side_upwind_of_facet or element_other_side < 0:
+                        upwind_element = element_this_side
+                    else:
+                        upwind_element = element_other_side
 
                     # Get the compartment index of the compartment on the other side of the bounding facet
-                    i_compartment_on_other_side_of_bound = element_to_compartment_map[element_on_other_side_of_bound]
+                    i_compartment_on_other_side_of_bound = element_to_compartment_map[element_other_side]
 
                     # Add bounding facet and outward facing normal to compartment network
                     # Get the dictionary
                     d = compartment_network[id_compartment].get(i_compartment_on_other_side_of_bound, dict())
-                    d[facet] = (element_on_this_side_of_bound, normal)
+                    d[facet] = (upwind_element, normal)
                     compartment_network[id_compartment][i_compartment_on_other_side_of_bound] = d
 
         # Check compartments
@@ -783,10 +791,8 @@ def _merge_two_compartments(id_merge_into:              int,
                                         and the values are another dictionary.
                                             For each of those dictionaries, the keys are the index of the bounding facet
                                             between the two compartments, and the values Tuples.
-                                                - The first entry in the tuple is the index of the element
-                                                  on the boundary inside the compartment.
-                                                - The second entry in the tuple is a numpy array representing
-                                                  the unit normal for that boundary facing out of the compartment.
+                                                - The 1st is the index of the element upwind of that boundary facet.
+                                                - The 2nd is the outward facing unit normal for that boundary facet.
         compartment_sizes:          The size of each compartment, indexed by compartment ID.
         connection_pairing:         Dictionary storing info about which other compartments a given compartment is connected to
                                     - First key is compartment ID
@@ -950,11 +956,10 @@ def _check_flow_requirement(element: int, compartment: Set[int], vec: np.ndarray
     # The volumetric flowrate through each edge
     flow_for_facet: Dict[int, float] = dict()
     total_flow_this_element = 0.0
-    director_this_face = vec[element, :]
+    velocity = vec[element]
     for facet in mesh.element_facets[element]:
-        normal_to_facet = mesh.get_outward_facing_normal(facet, element)
-        length_of_facet = mesh.facet_size[facet]
-        flow_through_edge_i = director_this_face.dot(normal_to_facet) * length_of_facet
+        normal = mesh.get_outward_facing_normal(facet, element)
+        flow_through_edge_i = velocity.dot(normal) * mesh.facet_size[facet]
         flow_for_facet[facet] = flow_through_edge_i
         total_flow_this_element += np.abs(flow_through_edge_i)
 
@@ -991,16 +996,15 @@ def _check_flow_requirement(element: int, compartment: Set[int], vec: np.ndarray
     # 4. Of the remaining shared_facets, check which of them have flow above the threshold for the neighbouring element
     ####################################################################################################################
     for facet, element_neighbour in facet_to_neighbour_element_map.items():
-        director_in_face: np.ndarray = vec[element_neighbour, :]
+        velocity: np.ndarray = vec[element_neighbour]
 
         flow_through_shared_edge = np.inf
 
         # Calculate the total flow into/out of the element
         total_flow = 0.0
         for facet_neighbour in mesh.element_facets[element_neighbour]:
-            normal_to_facet = mesh.get_outward_facing_normal(facet_neighbour, element_neighbour)
-            length_of_facet = mesh.facet_size[facet_neighbour]
-            flow_through_facet = np.abs(director_in_face.dot(normal_to_facet)) * length_of_facet
+            normal = mesh.get_outward_facing_normal(facet_neighbour, element_neighbour)
+            flow_through_facet = np.abs(velocity.dot(normal)) * mesh.facet_size[facet_neighbour]
 
             total_flow += flow_through_facet
 
