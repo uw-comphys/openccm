@@ -422,7 +422,12 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
 
             _merge_two_compartments(id_merge_into, id_compartment, compartments, compartment_network,
                                     compartment_sizes, connection_pairing, compartment_avg_directions,
-                                    dir_vec, volumetric_flows, cstr=(model=='cstr'))
+                                    dir_vec, volumetric_flows, cstr=(model == 'cstr'))
+
+        # Any compartment connected only to domain inlets/outlets cannot be merged into something else
+        for compartment, connections in connection_pairing.items():
+            if all(neighbour < 0 for neighbour in connections.values()):
+                compartment_sizes[compartment] = np.inf
 
         while np.any(compartment_sizes < min_compartment_size):
             id_smallest: int = np.argmin(compartment_sizes)
