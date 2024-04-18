@@ -390,7 +390,7 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
     #       PFR and CSTR modelling approach.
 
     if model == 'cstr':
-        connection_pairing, volumetric_flows = connect_cstr_compartments(compartment_network, mesh, vel_vec, config_parser)
+        connection_pairing, volumetric_flows = connect_cstr_compartments(compartment_network, mesh, vel_vec, False, config_parser)
     elif model == 'pfr':
         res = connect_pfr_compartments(compartment_network, compartments, mesh, dir_vec, vel_vec, False, config_parser)
         connection_pairing, volumetric_flows = res[2], res[5]

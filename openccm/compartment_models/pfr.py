@@ -901,7 +901,7 @@ def connect_pfr_compartments(compartment_network:  Dict[int, Dict[int, Dict[int,
         dir_vec:                Numpy array of direction vectors, row i is for element i.
         vel_vec:                Numpy array of velocity vectors, row i is for element i.
         final:                  If asserts and all calculations should be performed.
-                                This is set to True when function is called from merge_compartments since some may
+                                This is set to False when function is called from merge_compartments since some may
                                 be too small for the invariants to be true.
         config_parser:          The OpenCCM ConfigParser
 
