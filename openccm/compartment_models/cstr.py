@@ -67,40 +67,47 @@ def connect_cstr_compartments(compartment_network: Dict[int, Dict[int, Dict[int,
 
     # NOTE: Does not start indexing at 0 so that negative and positive signs can be used as signifier of inlet/outlet
     id_of_next_connection = 1
+    rejected_connection_pairings = set()
+    def pair(x, y):
+        """Cantor pairing function"""
+        return int(y + (x+y)*(x+y+1)/2)
 
     for id_compartment in compartment_network:
         compartment_connections: Dict[int, int] = dict()
 
         for id_neighbour in compartment_network[id_compartment]:
             # Find if this neighbour-compartment pair has already been done (but from the neighbour's side)
-            need_to_do_neighbour_compartment_pair = True
-            for _id_connection, _id_compartment in connection_pairing.get(id_neighbour, {}).items():
-                if id_compartment == _id_compartment:
-                    compartment_connections[-_id_connection] = id_neighbour
-                    need_to_do_neighbour_compartment_pair = False
-
+            # Note that the order in which values are sent to `pair` is flipped on purpose.
+            need_to_do_neighbour_compartment_pair = pair(id_neighbour, id_compartment) not in rejected_connection_pairings
             if need_to_do_neighbour_compartment_pair:
-                net_flow = 0.0
+                for _id_connection, _id_compartment in connection_pairing.get(id_neighbour, {}).items():
+                    if id_compartment == _id_compartment:
+                        compartment_connections[-_id_connection] = id_neighbour
+                        need_to_do_neighbour_compartment_pair = False
 
-                neighbour_dict: Dict[int, Tuple[int, np.ndarray]] = compartment_network[id_compartment][id_neighbour]
-                for facet in neighbour_dict:
-                    facet_size = mesh.facet_size[facet]
-                    element_on_this_side_of_bound_id, normal = neighbour_dict[facet]
-                    velocity_vector = v_vec[element_on_this_side_of_bound_id]
-                    flux = np.dot(velocity_vector, normal)
-                    net_flow += flux * facet_size
+                if need_to_do_neighbour_compartment_pair:
+                    net_flow = 0.0
 
-                # If the flow is below the threshold, don't add the connection.
-                if abs(net_flow) < flow_threshold:
-                    continue
+                    neighbour_dict: Dict[int, Tuple[int, np.ndarray]] = compartment_network[id_compartment][id_neighbour]
+                    for facet in neighbour_dict:
+                        facet_size = mesh.facet_size[facet]
+                        element_on_this_side_of_bound_id, normal = neighbour_dict[facet]
+                        velocity_vector = v_vec[element_on_this_side_of_bound_id]
+                        flux = np.dot(velocity_vector, normal)
+                        net_flow += flux * facet_size
 
-                if net_flow < 0:  # Outward facing normal used, so negative value means flow into compartment
-                    compartment_connections[id_of_next_connection] = id_neighbour
-                else:
-                    compartment_connections[-id_of_next_connection] = id_neighbour
+                    # If the flow is below the threshold, don't add the connection.
+                    if abs(net_flow) < flow_threshold:
+                        rejected_connection_pairings.add(pair(id_compartment, id_neighbour))
+                        continue
 
-                volumetric_flows[id_of_next_connection] = abs(net_flow)
-                id_of_next_connection += 1
+                    if net_flow < 0:  # Outward facing normal used, so negative value means flow into compartment
+                        compartment_connections[id_of_next_connection] = id_neighbour
+                    else:
+                        compartment_connections[-id_of_next_connection] = id_neighbour
+
+                    volumetric_flows[id_of_next_connection] = abs(net_flow)
+                    id_of_next_connection += 1
 
         # Must have at least two connections, otherwise mass would accumulate inside the compartment
         assert len(compartment_connections) > 1
