@@ -79,7 +79,6 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
     """
     print("Creating PFR network")
 
-    rtol_opt        = config_parser.get_item(['COMPARTMENT MODELLING', 'rtol_opt'],       float)
     atol_opt        = config_parser.get_item(['COMPARTMENT MODELLING', 'atol_opt'],       float)
     dist_threshold  = config_parser.get_item(['COMPARTMENT MODELLING', 'dist_threshold'], float)
 
@@ -96,7 +95,7 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
     id_next_connection, connection_distances, connection_pairing, compartment_network, compartments, _volumetric_flows = results_1
 
     # 1.2 Optimize connections to prevent flow reversal when creating the intra-compartment flows.
-    tweak_compartment_flows(connection_pairing, _volumetric_flows, mesh.grouped_bcs, atol_opt, rtol_opt)
+    tweak_compartment_flows(connection_pairing, _volumetric_flows, mesh.grouped_bcs, atol_opt)
 
     # 1.3 Reorder connections and merge their locations as needed.
     connection_locations: Dict[int, List[Tuple[float, List[int]]]] = dict()
@@ -192,7 +191,7 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
         assert np.all(_outlets < 0) or np.all(_outlets >= 0)
 
     # Final optimization of flowrates in order to ensure mass is conserved around each PFR
-    tweak_final_flows(connections, volumetric_flows, mesh.grouped_bcs, atol_opt, rtol_opt)
+    tweak_final_flows(connections, volumetric_flows, mesh.grouped_bcs, atol_opt)
 
     print("Done creating PFR network")
     return connections, volumes, volumetric_flows, compartment_to_pfr_map

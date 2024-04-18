@@ -166,7 +166,6 @@ def create_cstr_network(compartments:           Dict[int, Set[int]],
     """
     print('Creating CSTR network')
 
-    rtol_opt = config_parser.get_item(['COMPARTMENT MODELLING', 'rtol_opt'], float)
     atol_opt = config_parser.get_item(['COMPARTMENT MODELLING', 'atol_opt'], float)
 
     ####################################################################################################################
@@ -213,7 +212,7 @@ def create_cstr_network(compartments:           Dict[int, Set[int]],
         assert len(outlets) > 0
         connections[id_cstr] = (inlets, outlets)
 
-    tweak_final_flows(connections, volumetric_flows, mesh.grouped_bcs, atol_opt, rtol_opt)
+    tweak_final_flows(connections, volumetric_flows, mesh.grouped_bcs, atol_opt)
 
     compartment_to_cstr_map: Dict[int, List[int]] = {cstr: [cstr] for cstr in range(len(connections))}
 
