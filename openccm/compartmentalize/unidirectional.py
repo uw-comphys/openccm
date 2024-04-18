@@ -901,7 +901,7 @@ def _merge_two_compartments(id_merge_into:              int,
         else:
             id_to_merge = compartments_to_merge.pop()
             if len(connection_pairing[id_to_merge]) == 1:
-                id_merge_into = list(compartment_network[id_to_merge].keys())[0]
+                id_merge_into = list(connection_pairing[id_to_merge].values())[0]
             elif all_connections_of_same_type(connection_pairing[id_to_merge]):
                 id_merge_into = find_best_merge_target(id_to_merge, connection_pairing[id_to_merge], compartment_avg_directions)
             else:
