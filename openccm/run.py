@@ -104,31 +104,33 @@ def run(config_parser_or_file: Union[ConfigParser, str]) -> Dict[str, int]:
 
     start = perf_counter_ns()
     if cache_info.already_made_compartments:
-        with open(cache_info.name_compartments, 'rb') as handle:
-            compartments = pickle.load(handle)
+        with open(cache_info.name_compartments_pre, 'rb') as handle:
+            compartments_pre = pickle.load(handle)
     else:
-        compartments, _ = calculate_compartments(dir_vec, c_mesh, config_parser)
-        with open(cache_info.name_compartments, 'wb') as handle:
-            pickle.dump(compartments, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        compartments_pre, _ = calculate_compartments(dir_vec, c_mesh, config_parser)
+        with open(cache_info.name_compartments_pre, 'wb') as handle:
+            pickle.dump(compartments_pre, handle, protocol=pickle.HIGHEST_PROTOCOL)
     timing_dict['Compartmentalize'] = perf_counter_ns() - start
 
     if not cache_info.already_made_cm_info_vtu:
         if OpenCMP:
-            compartment_labels_pre = create_compartment_label_gfu(mesh, compartments)
+            compartment_labels_pre = create_compartment_label_gfu(mesh, compartments_pre)
         else:
             label_elements_openfoam(c_mesh, config_parser)
-            label_compartments_openfoam('compartments_pre', compartments, config_parser)
+            label_compartments_openfoam('compartments_pre', compartments_pre, config_parser)
 
     # Turn the compartments into a network
     start = perf_counter_ns()
     if cache_info.already_made_compartment_network:
         with open(cache_info.name_compartment_network, 'rb') as handle:
             compartment_network = pickle.load(handle)
-        # Note: Don't need to load compartments since it was loaded earlier up and not changed since
+        with open(cache_info.name_compartments_post, 'rb') as handle:
+            compartments_post = pickle.load(handle)
+        del compartments_pre  # This will have been loaded only for visualization purposes and can be deleted here to save RAM
     else:
-        compartments, compartment_network = create_compartment_network(compartments, c_mesh, dir_vec, vel_vec, config_parser)
-        with open(cache_info.name_compartments, 'wb') as handle:
-            pickle.dump(compartments, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        compartments_post, compartment_network = create_compartment_network(compartments_pre, c_mesh, dir_vec, vel_vec, config_parser)
+        with open(cache_info.name_compartments_post, 'wb') as handle:
+            pickle.dump(compartments_post, handle, protocol=pickle.HIGHEST_PROTOCOL)
         with open(cache_info.name_compartment_network, 'wb') as handle:
             pickle.dump(compartment_network, handle, protocol=pickle.HIGHEST_PROTOCOL)
     timing_dict['Compartment Network'] = perf_counter_ns() - start
@@ -136,7 +138,7 @@ def run(config_parser_or_file: Union[ConfigParser, str]) -> Dict[str, int]:
     # Label each element with the compartment ID it belongs to after merging small compartments
     if not cache_info.already_made_cm_info_vtu:
         if OpenCMP:
-            compartment_labels_post = create_compartment_label_gfu(mesh, compartments)
+            compartment_labels_post = create_compartment_label_gfu(mesh, compartments_post)
             # Create element labels
             element_labels_gfu = create_element_label_gfu(mesh)
             with ngcore.TaskManager():
@@ -147,7 +149,7 @@ def run(config_parser_or_file: Union[ConfigParser, str]) -> Dict[str, int]:
                           subdivision=config_parser.get_item(['POST-PROCESSING', 'subdivisions'], int)
                           ).Do()
         else:
-            label_compartments_openfoam('compartments_post', compartments, config_parser)
+            label_compartments_openfoam('compartments_post', compartments_post, config_parser)
     print("End COMPARTMENTALIZE")
 
     # Convert the compartment network to a CSTR/PFR network
@@ -156,14 +158,14 @@ def run(config_parser_or_file: Union[ConfigParser, str]) -> Dict[str, int]:
         with open(cache_info.name_model_network, 'rb') as handle:
             model_network = pickle.load(handle)
     else:
-        model_network = create_model_network(model, compartments, compartment_network, c_mesh, vel_vec, dir_vec, config_parser)
+        model_network = create_model_network(model, compartments_post, compartment_network, c_mesh, vel_vec, dir_vec, config_parser)
         with open(cache_info.name_model_network, 'wb') as handle:
             pickle.dump(model_network, handle, protocol=pickle.HIGHEST_PROTOCOL)
     timing_dict['Reactor Network'] = perf_counter_ns() - start
 
     # Visualize the CSTR/PFR network
     if visualize_network:
-        visualize_model_network(model_network, compartments, c_mesh, dir_vec, config_parser)
+        visualize_model_network(model_network, compartments_post, c_mesh, dir_vec, config_parser)
 
     # Solve the CSTR/PFR network
     if run_simulation:
@@ -191,7 +193,7 @@ def run(config_parser_or_file: Union[ConfigParser, str]) -> Dict[str, int]:
     if output_VTK:
         start = perf_counter_ns()
         convert_to_vtu_and_save(OpenCMP, model,
-                                system_results, model_network, compartments, config_parser, c_mesh,
+                                system_results, model_network, compartments_post, config_parser, c_mesh,
                                 mesh=mesh if OpenCMP else None,
                                 n_vec=dir_vec if OpenCMP else None)
         timing_dict['VTU Export'] = perf_counter_ns() - start
@@ -209,7 +211,8 @@ class CacheInfo:
         OpenCMP             = config_parser.get('INPUT', 'opencmp_sol_file_path', fallback=None) is not None
 
         self.name_cmesh                 = tmp_folder_path + 'cmesh.pickle'
-        self.name_compartments          = tmp_folder_path + 'compartments.pickle'
+        self.name_compartments_pre      = tmp_folder_path + 'compartments_pre.pickle'
+        self.name_compartments_post     = tmp_folder_path + 'compartments_post.pickle'
         self.name_compartment_network   = tmp_folder_path + 'compartment_network.pickle'
         self.name_direction_sol         = tmp_folder_path + 'n_gfu.sol'
         self.name_direction_vector      = tmp_folder_path + 'dir_vec.npy'
@@ -226,8 +229,8 @@ class CacheInfo:
                                                        and isfile(self.name_velocity_info))
 
         self.already_made_cmesh                = isfile(self.name_cmesh)
-        self.already_made_compartments          = isfile(self.name_compartments)
-        self.already_made_compartment_network   = isfile(self.name_compartment_network)
+        self.already_made_compartments          = isfile(self.name_compartments_pre)
+        self.already_made_compartment_network   = isfile(self.name_compartment_network) and isfile(self.name_compartments_post)
         self.already_made_cm_info_vtu           = isfile(self.name_model_info + '.vtu')
         self.already_made_model_network         = isfile(self.name_model_network)
 
