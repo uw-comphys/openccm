@@ -373,10 +373,10 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
     compartment_avg_directions = np.inf * np.ones((max(compartments.keys()) + 1, dir_vec.shape[1]))
     for i_compartment in compartments:
         compartment_avg_directions[i_compartment, :] = np.mean(dir_vec[list(compartments[i_compartment]), :], axis=0)
-    magnitude = np.linalg.norm(compartment_avg_directions, axis=1)[:, np.newaxis]
+    magnitude = np.linalg.norm(compartment_avg_directions, axis=1)
     if np.any(magnitude == 0):
         raise Exception("Compartment with 0 velocity magnitude found")
-    compartment_avg_directions /= magnitude
+    compartment_avg_directions[magnitude != np.inf] /= magnitude[magnitude != np.inf, np.newaxis]
 
     # Calculate compartment sizes
     compartment_sizes = np.inf * np.ones(max(compartments.keys())+1)
