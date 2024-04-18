@@ -122,8 +122,6 @@ def create_compartment_network(compartments:    Dict[int, Set[int]],
                     # AND remove the element from the mapping since it's no longer in a compartment
                     for element in elements_in_compartment:
                         element_to_compartment_map.pop(element)
-                        for facet in mesh.element_facets[element]:
-                            mesh.facet_to_bc_map[facet] = mesh.grouped_bcs.no_flux
 
                     # If it has a single connection, also remove the connection from that compartment
                     if len(ids_neighbour) > 0:
