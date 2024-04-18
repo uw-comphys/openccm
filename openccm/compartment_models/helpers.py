@@ -150,9 +150,9 @@ def tweak_compartment_flows(
         assert np.any(A[i, :] < 0)
 
     # Print pre-optimization stats
-    print("Net-outflow compartments = {}".format((b < 0).sum()))
-    print("BEFORE: MAX abs error: {:.4e}".format(np.max(abs(b)) * v_min + eps))
-    print("BEFORE: AVG abs error: {:.4e}".format(np.mean(abs(b)) * v_min + eps))
+    print("Net-outflow compartments = {}".format((b[:n_compartments] < eps/v_min).sum()))
+    print("BEFORE: MAX abs error: {:.4e}".format(np.max(abs(b[:n_compartments])) * v_min + eps))
+    print("BEFORE: AVG abs error: {:.4e}".format(np.mean(abs(b[:n_compartments])) * v_min + eps))
 
     # Solve the equation
     results = linprog(c, A_ub=A, b_ub=b, bounds=(0, None), method='highs', integrality=2)
@@ -166,8 +166,8 @@ def tweak_compartment_flows(
     assert np.all(adjustments >= -eps / v_min)
 
     b_new = b - A @ adjustments
-    print("AFTER:  MAX abs error: {:.4e}".format(np.max(b_new) * v_min + eps))
-    print("AFTER:  AVG abs error: {:.4e}".format(np.mean(b_new) * v_min + eps))
+    print("AFTER:  MAX abs error: {:.4e}".format(np.max(b_new[:n_compartments]) * v_min + eps))
+    print("AFTER:  AVG abs error: {:.4e}".format(np.mean(b_new[:n_compartments]) * v_min + eps))
 
     # Adjust the volumetric flows
     for connection, i in con_to_index.items():
