@@ -92,9 +92,14 @@ def tweak_compartment_flows(
     Returns:
         Nothing. Values are changed implicitly
     """
+    safety_factor = 0.9
+
     # Small epsilon for conservation of mass to ensure that net flow is always positive.
     # Using 0 can cause floating point addition problems when the flow get close to summing to zero.
     eps: float = 1e-6
+
+    if eps >= safety_factor*atol_opt:
+        raise ValueError(f"Absolute tolerance must be greater than {eps/safety_factor:.3e}")
 
     # Scale volumetric flows to avoid numerical issues
     v_min = min(volumetric_flows.values())
@@ -115,7 +120,7 @@ def tweak_compartment_flows(
     A = np.zeros((2*n_compartments, n_flows), dtype='b')
     b = np.ones(2*n_compartments)
     b[:n_compartments] *= -eps/v_min
-    b[n_compartments:] *= 0.9*atol_opt/v_min  # Multiply by 0.9 to avoid any precision issues when comparing floats
+    b[n_compartments:] *= safety_factor*atol_opt/v_min  # Multiply by 0.9 to avoid any precision issues when comparing floats
 
     domain_inlet_outlet_connections = set()
     for compartment, compartment_connections in connection_pairing.items():
@@ -148,6 +153,12 @@ def tweak_compartment_flows(
     for i in range(A.shape[0]):
         assert np.any(A[i, :] > 0)
         assert np.any(A[i, :] < 0)
+
+    for i in range(n_compartments):
+        # It's -b[i] since the first n_compartments constraints are multiplied by negative -1
+        # because they are lower bounds but must be written as upper bounds.
+        if -b[i] >= b[i+n_compartments]:
+            raise ValueError(f"Compartment {i} has infeasible net-inflow constraints: {b[i]:.1e} <= net_inflow <= {b[i+n_compartments]:.1e}")
 
     # Print pre-optimization stats
     print("Net-outflow compartments = {}".format((b[:n_compartments] < eps/v_min).sum()))
