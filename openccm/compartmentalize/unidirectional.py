@@ -270,6 +270,7 @@ def renumber_compartments(compartments:         Dict[int, Set[int]],
 
 
 def calculate_compartments(dir_vec:         np.ndarray,
+                           vel_vec:         np.ndarray,
                            mesh:            CMesh,
                            config_parser:   ConfigParser) \
         -> Tuple[Dict[int, Set[int]], Set[int]]:
@@ -313,7 +314,7 @@ def calculate_compartments(dir_vec:         np.ndarray,
         bc_elements_for_seed.pop(removed_element, None)
 
     # Wrapping function to allow for numba usage (which has not been implemented)
-    compartment_list = _calculate_compartments(valid_elements, dir_vec, mesh, bc_elements_for_seed, config_parser)
+    compartment_list = _calculate_compartments(valid_elements, dir_vec, vel_vec, mesh, bc_elements_for_seed, config_parser)
 
     compartments = {i: compartment for i, compartment in enumerate(compartment_list)}
 
@@ -516,6 +517,7 @@ def all_connections_of_same_type(network: Dict[int, int]):
 
 def _calculate_compartments(elements_not_in_a_compartment:  Set[int],
                             n_vec:                          np.ndarray,
+                            v_vec:                          np.ndarray,
                             mesh:                           CMesh,
                             seeds:                          OrderedDict[int, None],
                             config_parser:                  ConfigParser) \
@@ -627,7 +629,7 @@ def _calculate_compartments(elements_not_in_a_compartment:  Set[int],
                 # NOTE: Only blacklist if it fails the first check.
                 #       DO NOT blacklist based on this one
                 for i, id_neighbour_i in enumerate(neighbouring_candidates_np):
-                    check[i] = _check_flow_requirement(id_neighbour_i, compartment_curr, n_vec, mesh, flow_threshold)
+                    check[i] = _check_flow_requirement(id_neighbour_i, compartment_curr, v_vec, mesh, flow_threshold)
 
                 ######
                 # 4.1 If there are no neighbours above the specified threshold go to 6.

@@ -107,7 +107,7 @@ def run(config_parser_or_file: Union[ConfigParser, str]) -> Dict[str, int]:
         with open(cache_info.name_compartments_pre, 'rb') as handle:
             compartments_pre = pickle.load(handle)
     else:
-        compartments_pre, _ = calculate_compartments(dir_vec, c_mesh, config_parser)
+        compartments_pre, _ = calculate_compartments(dir_vec, vel_vec, c_mesh, config_parser)
         with open(cache_info.name_compartments_pre, 'wb') as handle:
             pickle.dump(compartments_pre, handle, protocol=pickle.HIGHEST_PROTOCOL)
     timing_dict['Compartmentalize'] = perf_counter_ns() - start
