@@ -24,14 +24,14 @@ from ..config_functions import ConfigParser
 from ..mesh import CMesh
 
 
-def create_compartment_network(compartments:    Dict[int, Set[int]],
-                               mesh:            CMesh,
-                               dir_vec:         np.ndarray,
-                               vel_vec:         np.ndarray,
-                               config_parser:   ConfigParser) \
+def create_compartment_network(compartments:        Dict[int, Set[int]],
+                               mesh:                CMesh,
+                               dir_vec:             np.ndarray,
+                               flows_and_upwind:    np.ndarray,
+                               config_parser:       ConfigParser) \
         -> Tuple[
             Dict[int, Set[int]],
-            Dict[int, Dict[int, Dict[int, Tuple[int, np.ndarray]]]]
+            Dict[int, Dict[int, Dict[int, int]]]
         ]:
     """
     This function takes identified compartments and converts them into a network of compartments.
@@ -69,7 +69,7 @@ def create_compartment_network(compartments:    Dict[int, Set[int]],
     compartments: Dict[int, Set[int]] = {_id: set(element_set) for _id, element_set in compartments.items()}
 
     # Dictionary to store the compartment network in
-    compartment_network: Dict[int, Dict[int, Dict[int, Tuple[int, np.ndarray]]]] = {i: dict() for i in range(len(compartments))}
+    compartment_network: Dict[int, Dict[int, Dict[int, int]]] = {i: dict() for i in range(len(compartments))}
 
     # A dictionary to quickly look up which compartment a given element is in
     element_to_compartment_map: Dict[int, int] = dict()
@@ -147,19 +147,7 @@ def create_compartment_network(compartments:    Dict[int, Set[int]],
                 for facet in bounding_facets_info:
                     # Get the element on the other side of the bounding facet.
                     # If the facet is on the bounds of the mesh, then the element_id will be negative
-                    element_other_side = bounding_facets_info[facet][1]
-
-                    # Calculate the outward facing normal
-                    element_this_side = bounding_facets_info[facet][0]
-                    normal = mesh.get_outward_facing_normal(facet, element_this_side)
-
-                    # Find which element is upwind of the bounding facet
-                    v_this_element = vel_vec[element_this_side]
-                    this_side_upwind_of_facet = normal.dot(v_this_element) > 0
-                    if this_side_upwind_of_facet or element_other_side < 0:
-                        upwind_element = element_this_side
-                    else:
-                        upwind_element = element_other_side
+                    element_this_side, element_other_side = bounding_facets_info[facet]
 
                     # Get the compartment index of the compartment on the other side of the bounding facet
                     i_compartment_on_other_side_of_bound = element_to_compartment_map[element_other_side]
@@ -167,7 +155,7 @@ def create_compartment_network(compartments:    Dict[int, Set[int]],
                     # Add bounding facet and outward facing normal to compartment network
                     # Get the dictionary
                     d = compartment_network[id_compartment].get(i_compartment_on_other_side_of_bound, dict())
-                    d[facet] = (upwind_element, normal)
+                    d[facet] = element_this_side
                     compartment_network[id_compartment][i_compartment_on_other_side_of_bound] = d
 
         # Check compartments
@@ -190,7 +178,7 @@ def create_compartment_network(compartments:    Dict[int, Set[int]],
                     if id_neighbour > 0:
                         assert id_compartment in compartment_network[id_neighbour]
 
-    merge_compartments(compartments, compartment_network, mesh, dir_vec, vel_vec, config_parser)
+    merge_compartments(compartments, compartment_network, mesh, dir_vec, flows_and_upwind, config_parser)
     renumber_compartments(compartments, compartment_network)
 
     print("Done creating compartment network")
@@ -198,7 +186,7 @@ def create_compartment_network(compartments:    Dict[int, Set[int]],
 
 
 def renumber_compartments(compartments:         Dict[int, Set[int]],
-                          compartment_network:  Dict[int, Dict[int, Dict[int, Tuple[int, np.ndarray]]]]) \
+                          compartment_network:  Dict[int, Dict[int, Dict[int, int]]]) \
         -> None:
     """
     This function re-numbers the compartments from their current numbering, which can include holes for any compartments
@@ -226,7 +214,7 @@ def renumber_compartments(compartments:         Dict[int, Set[int]],
 
     # 2. Map compartment network
     # 2.1 Need to map to outside the final range first
-    tmp_compartment_network: Dict[int, Dict[int, Dict[int, Tuple[int, np.ndarray]]]] = dict()
+    tmp_compartment_network: Dict[int, Dict[int, Dict[int, int]]] = dict()
     for id_old, id_tmp in old_to_tmp_compartment_id_map.items():
         compartment_info = compartment_network.pop(id_old)
         tmp_compartment_network[id_tmp] = compartment_info
@@ -269,10 +257,10 @@ def renumber_compartments(compartments:         Dict[int, Set[int]],
     print("Done renumbering compartments")
 
 
-def calculate_compartments(dir_vec:         np.ndarray,
-                           vel_vec:         np.ndarray,
-                           mesh:            CMesh,
-                           config_parser:   ConfigParser) \
+def calculate_compartments(dir_vec:             np.ndarray,
+                           flows_and_upwind:    np.ndarray,
+                           mesh:                CMesh,
+                           config_parser:       ConfigParser) \
         -> Tuple[Dict[int, Set[int]], Set[int]]:
     """
     Wrapper for _calculate_compartments to allow for numba
@@ -314,7 +302,7 @@ def calculate_compartments(dir_vec:         np.ndarray,
         bc_elements_for_seed.pop(removed_element, None)
 
     # Wrapping function to allow for numba usage (which has not been implemented)
-    compartment_list = _calculate_compartments(valid_elements, dir_vec, vel_vec, mesh, bc_elements_for_seed, config_parser)
+    compartment_list = _calculate_compartments(valid_elements, dir_vec, flows_and_upwind, mesh, bc_elements_for_seed, config_parser)
 
     compartments = {i: compartment for i, compartment in enumerate(compartment_list)}
 
@@ -329,10 +317,10 @@ def calculate_compartments(dir_vec:         np.ndarray,
 
 
 def merge_compartments(compartments:        Dict[int, Set[int]],
-                       compartment_network: Dict[int, Dict[int, Dict[int, Tuple[int, np.ndarray]]]],
+                       compartment_network: Dict[int, Dict[int, Dict[int, int]]],
                        mesh:                CMesh,
                        dir_vec:             np.ndarray,
-                       vel_vec:             np.ndarray,
+                       flows_and_upwind:    np.ndarray,
                        config_parser:       ConfigParser) -> None:
     """
     This function takes the list of compartments and merges any compartments which are below the specified threshold
@@ -351,7 +339,11 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
         compartment_network:    A dictionary representation of the network.
         mesh:                   The mesh.
         dir_vec:                Array indexed by element ID for the direction vector.
-        vel_vec:                Array indexed by element ID for the velocity vector.
+        flows_and_upwind:       2D object array indexed by facet ID.
+                                - 1st column is volumetric flowrate through facet.
+                                - 2nd column is a flag indicating which of a facet's elements are upwind of it.
+                                    - 0, and 1 represent the index into mesh.facet_elements[facet]
+                                    - -1 is used for boundary elements to represent
         config_parser:          ConfigParser to use.
     """
     print("Merging compartments")
@@ -391,9 +383,9 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
     #       PFR and CSTR modelling approach.
 
     if model == 'cstr':
-        connection_pairing, volumetric_flows = connect_cstr_compartments(compartment_network, mesh, vel_vec, False, config_parser)
+        connection_pairing, volumetric_flows = connect_cstr_compartments(compartment_network, mesh, flows_and_upwind, False, config_parser)
     elif model == 'pfr':
-        res = connect_pfr_compartments(compartment_network, compartments, mesh, dir_vec, vel_vec, False, config_parser)
+        res = connect_pfr_compartments(compartment_network, compartments, mesh, dir_vec, flows_and_upwind, False, config_parser)
         connection_pairing, volumetric_flows = res[2], res[5]
     else:
         raise ValueError(f"Unsupported model type: {model}")
@@ -517,7 +509,7 @@ def all_connections_of_same_type(network: Dict[int, int]):
 
 def _calculate_compartments(elements_not_in_a_compartment:  Set[int],
                             n_vec:                          np.ndarray,
-                            v_vec:                          np.ndarray,
+                            flows_and_upwind:               np.ndarray,
                             mesh:                           CMesh,
                             seeds:                          OrderedDict[int, None],
                             config_parser:                  ConfigParser) \
@@ -629,7 +621,7 @@ def _calculate_compartments(elements_not_in_a_compartment:  Set[int],
                 # NOTE: Only blacklist if it fails the first check.
                 #       DO NOT blacklist based on this one
                 for i, id_neighbour_i in enumerate(neighbouring_candidates_np):
-                    check[i] = _check_flow_requirement(id_neighbour_i, compartment_curr, v_vec, mesh, flow_threshold)
+                    check[i] = _check_flow_requirement(id_neighbour_i, compartment_curr, flows_and_upwind, mesh, flow_threshold)
 
                 ######
                 # 4.1 If there are no neighbours above the specified threshold go to 6.
@@ -767,7 +759,7 @@ def _remove_unwanted_elements(mesh: CMesh, dir_vec: np.ndarray) -> Tuple[Set[int
 def _merge_two_compartments(id_merge_into:              int,
                             id_to_merge:                int,
                             compartments:               Dict[int, Set[int]],
-                            compartment_network:        Dict[int, Dict[int, Dict[int, Tuple[int, np.ndarray]]]],
+                            compartment_network:        Dict[int, Dict[int, Dict[int, int]]],
                             compartment_sizes:          np.ndarray,
                             connection_pairing:         Dict[int, Dict[int, int]],
                             compartment_avg_directions: np.ndarray,
@@ -910,7 +902,11 @@ def _merge_two_compartments(id_merge_into:              int,
                 pass  # Merged INTO it on a previous iteration
 
 
-def _check_flow_requirement(element: int, compartment: Set[int], vec: np.ndarray, mesh: CMesh, flow_threshold: float) -> bool:
+def _check_flow_requirement(element:            int,
+                            compartment:        Set[int],
+                            flows_and_upwind:   np.ndarray,
+                            mesh:               CMesh,
+                            flow_threshold:     float) -> bool:
     """
     Check if the provided face has enough flow between it and the compartment to be considered part of it
     AND that flow is going in the correct direction.
@@ -925,11 +921,15 @@ def _check_flow_requirement(element: int, compartment: Set[int], vec: np.ndarray
            of the total flow in/out of A neighbouring face of id_element inside the compartment.
 
     Args:
-        element:        Integer representing the number (id) of the element that is being considered
-        compartment:    The compartment we wish to try to add id_element to.
-        vec:            The velocity vector on the mesh (currently must be a 0th order approximation)
-        mesh:           The mesh, needed for finding neighbouring elements and facets
-        flow_threshold: The minimum % of an element's total inflow/outflow needed over the connection.
+        element:            Integer representing the number (id) of the element that is being considered
+        compartment:        The compartment we wish to try to add id_element to.
+        flows_and_upwind:   2D object array indexed by facet ID.
+                            - 1st column is volumetric flowrate through facet.
+                            - 2nd column is a flag indicating which of a facet's elements are upwind of it.
+                                - 0, and 1 represent the index into mesh.facet_elements[facet]
+                                - -1 is used for boundary elements to represent
+        mesh:               The mesh, needed for finding neighbouring elements and facets
+        flow_threshold:     The minimum % of an element's total inflow/outflow needed over the connection.
 
     Returns:
         ~: Boolean indicating if id_element passed the flow requirement to be added to the compartment.
@@ -958,12 +958,14 @@ def _check_flow_requirement(element: int, compartment: Set[int], vec: np.ndarray
     # The volumetric flowrate through each edge
     flow_for_facet: Dict[int, float] = dict()
     total_flow_this_element = 0.0
-    velocity = vec[element]
+
     for facet in mesh.element_facets[element]:
-        normal = mesh.get_outward_facing_normal(facet, element)
-        flow_through_edge_i = velocity.dot(normal) * mesh.facet_size[facet]
-        flow_for_facet[facet] = flow_through_edge_i
-        total_flow_this_element += np.abs(flow_through_edge_i)
+        flow_through_facet, upstream_flag = flows_and_upwind[facet]
+        inflow = (upstream_flag == -1) or (element != mesh.facet_elements[facet][upstream_flag])
+        flow_through_facet *= (-1 if inflow else 1)
+
+        flow_for_facet[facet] = flow_through_facet
+        total_flow_this_element += np.abs(flow_through_facet)
 
     # Need to divide by 2 since so far it has been calculating the sum of the absolute value of the
     total_flow_this_element /= 2
@@ -998,18 +1000,13 @@ def _check_flow_requirement(element: int, compartment: Set[int], vec: np.ndarray
     # 4. Of the remaining shared_facets, check which of them have flow above the threshold for the neighbouring element
     ####################################################################################################################
     for facet, element_neighbour in facet_to_neighbour_element_map.items():
-        velocity: np.ndarray = vec[element_neighbour]
-
         flow_through_shared_edge = np.inf
 
         # Calculate the total flow into/out of the element
         total_flow = 0.0
         for facet_neighbour in mesh.element_facets[element_neighbour]:
-            normal = mesh.get_outward_facing_normal(facet_neighbour, element_neighbour)
-            flow_through_facet = np.abs(velocity.dot(normal)) * mesh.facet_size[facet_neighbour]
-
+            flow_through_facet = flows_and_upwind[facet_neighbour][0]
             total_flow += flow_through_facet
-
             if facet_neighbour == facet:
                 flow_through_shared_edge = flow_through_facet
 

@@ -14,6 +14,9 @@
 # You should have received a copy of the GNU Lesser General Public License along with OpenCCM. If not, see             #
 # <https://www.gnu.org/licenses/>.                                                                                     #
 ########################################################################################################################
+
+import numpy as np
+
 from .cmesh import CMesh, GroupedBCs
 
 from .convert_openfoam import convert_mesh_openfoam
@@ -27,3 +30,44 @@ def convert_mesh(OpenCMP: bool, config_parser: ConfigParser, **kwargs) -> CMesh:
         return convert_mesh_ngsolve(config_parser, kwargs['mesh'])
     else:
         return convert_mesh_openfoam(config_parser)
+
+
+def convert_velocities_to_flows(cmesh: CMesh, vel_vec: np.ndarray) -> np.ndarray:
+    """
+    Convert cell-centered velocities to volumetric flowrate through facets using upwinding.
+
+    Args:
+        cmesh:      The CMesh to project on.
+        vel_vec:    Velocity vector indexed by element ID.
+
+    Return:
+        flows_and_upwind: 2D object array indexed by facet ID.
+                            - 1st column is volumetric flowrate through facet.
+                            - 2nd column is a flag indicating which of a facet's elements are upwind of it.
+                                - 0, and 1 represent the index into mesh.facet_elements[facet]
+                                - -1 is used for boundary elements to represent
+    """
+    flow = cmesh.facet_size.copy()
+    upwind_element = np.zeros(len(flow), dtype=int)
+    for facet, facet_elements in enumerate(cmesh.facet_elements):
+        if len(facet_elements) == 1:
+            flux = cmesh.facet_normals[facet].dot(vel_vec[facet_elements[0]])
+            flow[facet] = abs(flux) * cmesh.facet_size[facet]
+            upwind_element[facet] = 0 if flux >= 0 else -1
+        elif len(facet_elements) == 2:
+            flux_0 = cmesh.get_outward_facing_normal(facet, facet_elements[0]).dot(vel_vec[facet_elements[0]])
+            flux_1 = cmesh.get_outward_facing_normal(facet, facet_elements[1]).dot(vel_vec[facet_elements[1]])
+            if flux_0 > 0 and flux_1 < 0:  # Element 0 is upwind of the facet since flow is coming out of it
+                flow[facet] = abs(flux_0) * cmesh.facet_size[facet]
+                upwind_element[facet] = 0
+            elif flux_1 > 0 and flux_0 < 0:  # Element 1 is upwind of the facet since flow is coming out of it
+                flow[facet] = abs(flux_1) * cmesh.facet_size[facet]
+                upwind_element[facet] = 1
+            else:  # Can happen due to too coarse of a mesh in regions where flow impinges on itself.
+                flux_0, flux_1 = abs(flux_0), abs(flux_1)
+                flow[facet] = (flux_0 if flux_0 > flux_1 else flux_1) * cmesh.facet_size[facet]
+                upwind_element[facet] = int(not (flux_0 > flux_1))  # Want 1st entry when flux_0 is bigger
+        else:
+            raise ValueError(f'Facet {facet} has {len(facet_elements)} elements, but should only have 1 or 2.')
+
+    return np.array([flow, upwind_element], dtype=object).transpose()

@@ -27,9 +27,9 @@ from .helpers import tweak_compartment_flows, tweak_final_flows
 
 
 def create_pfr_network(compartments:        Dict[int, Set[int]],
-                       compartment_network: Dict[int, Dict[int, Dict[int, Tuple[int, np.ndarray]]]],
+                       compartment_network: Dict[int, Dict[int, Dict[int, int]]],
                        mesh:                CMesh,
-                       vel_vec:             np.ndarray,
+                       flows_and_upwind:             np.ndarray,
                        dir_vec:             np.ndarray,
                        config_parser:       ConfigParser)\
         -> Tuple[
@@ -57,7 +57,11 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
                                             - The 1st is the index of the element upwind of that boundary facet.
                                             - The 2nd is the outward facing unit normal for that boundary facet.
         mesh:                   The mesh containing the compartments.
-        vel_vec:                Numpy array of velocity vectors, row i is for element i.
+        flows_and_upwind:       2D object array indexed by facet ID.
+                                - 1st column is volumetric flowrate through facet.
+                                - 2nd column is a flag indicating which of a facet's elements are upwind of it.
+                                    - 0, and 1 represent the index into mesh.facet_elements[facet]
+                                    - -1 is used for boundary elements to represent
         dir_vec:                Numpy array of direction vectors, row i is for element i.
         config_parser:          The OpenCCM ConfigParser
 
@@ -89,7 +93,7 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
     # 1. Create connections between compartments
     ####################################################################################################################
     # 1.1 Initial connections
-    results_1 = connect_pfr_compartments(compartment_network, compartments, mesh, dir_vec, vel_vec, True, config_parser)
+    results_1 = connect_pfr_compartments(compartment_network, compartments, mesh, dir_vec, flows_and_upwind, True, config_parser)
     id_next_connection, connection_distances, connection_pairing, compartment_network, compartments, _volumetric_flows = results_1
 
     # 1.2 Optimize connections to prevent flow reversal when creating the intra-compartment flows.
@@ -773,10 +777,10 @@ def _fix_connection_ordering(inlets_and_outlets:    List[Tuple[float, int]],
     return inlets_and_outlets
 
 
-def _fix_domain_boundary_connection_ordering(inlets_and_outlets: List[Tuple[float, int]],
-                                             compartment_connections: Dict[int, int],
-                                             grouped_bcs: GroupedBCs,
-                                             id_compartment: int)\
+def _fix_domain_boundary_connection_ordering(inlets_and_outlets:        List[Tuple[float, int]],
+                                             compartment_connections:   Dict[int, int],
+                                             grouped_bcs:               GroupedBCs,
+                                             id_compartment:            int)\
         -> List[Tuple[float, int]]:
     """
     Currently, the merging of small compartments can result in compartments with multiple connections to domain inlets/outlets.
@@ -867,17 +871,17 @@ def _fix_domain_boundary_connection_ordering(inlets_and_outlets: List[Tuple[floa
     return inlets_and_outlets
 
 
-def connect_pfr_compartments(compartment_network:  Dict[int, Dict[int, Dict[int, Tuple[int, np.ndarray]]]],
-                             compartments:         Dict[int, Set[int]],
-                             mesh:                 CMesh,
-                             dir_vec:              np.ndarray,
-                             vel_vec:              np.ndarray,
-                             final:                bool,
-                             config_parser:        ConfigParser) \
+def connect_pfr_compartments(compartment_network:   Dict[int, Dict[int, Dict[int, int]]],
+                             compartments:          Dict[int, Set[int]],
+                             mesh:                  CMesh,
+                             dir_vec:               np.ndarray,
+                             flows_and_upwind:      np.ndarray,
+                             final:                 bool,
+                             config_parser:         ConfigParser) \
         -> Tuple[int,
                  Dict[int, Dict[int, float]],
                  Dict[int, Dict[int, int]],
-                 Dict[int, Dict[int, Dict[int, Tuple[int, np.ndarray]]]],
+                 Dict[int, Dict[int, Dict[int, int]]],
                  Dict[int, Set[int]],
                  Dict[int, float]]:
     """
@@ -904,7 +908,11 @@ def connect_pfr_compartments(compartment_network:  Dict[int, Dict[int, Dict[int,
                                 of the elements in the compartment.
         mesh:                   The mesh the problem was solved on.
         dir_vec:                Numpy array of direction vectors, row i is for element i.
-        vel_vec:                Numpy array of velocity vectors, row i is for element i.
+        flows_and_upwind:       2D object array indexed by facet ID.
+                                - 1st column is volumetric flowrate through facet.
+                                - 2nd column is a flag indicating which of a facet's elements are upwind of it.
+                                    - 0, and 1 represent the index into mesh.facet_elements[facet]
+                                    - -1 is used for boundary elements to represent
         final:                  If asserts and all calculations should be performed.
                                 This is set to False when function is called from merge_compartments since some may
                                 be too small for the invariants to be true.
@@ -992,8 +1000,10 @@ def connect_pfr_compartments(compartment_network:  Dict[int, Dict[int, Dict[int,
                     # 1. Calculate and store the flowrate through each facet.
                     ###
                     flow_through_facet: Dict[int, float] = dict()
-                    for id_facet, (upwind_element, normal) in compartment_network[id_compartment][neighbour].items():
-                        flow_through_facet[id_facet] = normal.dot(vel_vec[upwind_element]) * mesh.facet_size[id_facet]
+                    for facet, element_this_side in compartment_network[id_compartment][neighbour].items():
+                        flow_through_facet_i, upstream_flag = flows_and_upwind[facet]
+                        inflow = (upstream_flag == -1) or (element_this_side != mesh.facet_elements[facet][upstream_flag])
+                        flow_through_facet[facet] = (-1 if inflow else 1) * flow_through_facet_i
 
                     ###
                     # 2. Calculate the total flowrate with all facets.
@@ -1009,9 +1019,9 @@ def connect_pfr_compartments(compartment_network:  Dict[int, Dict[int, Dict[int,
                     ###
                     # 4. Mark and remove all facets which are below the individual flow threshold.
                     ###
-                    for id_facet in list(flow_through_facet.keys()):
-                        if final and np.abs(flow_through_facet[id_facet]) < flow_threshold_facet:
-                            flow_through_facet.pop(id_facet)
+                    for facet in list(flow_through_facet.keys()):
+                        if final and np.abs(flow_through_facet[facet]) < flow_threshold_facet:
+                            flow_through_facet.pop(facet)
 
                     ###
                     # 5. Calculate the total flowrate with the remaining facets
@@ -1025,13 +1035,13 @@ def connect_pfr_compartments(compartment_network:  Dict[int, Dict[int, Dict[int,
                     #       into many tiny surfaces.
                     inlet_facets: Set[int] = set()
                     outlet_facet: Set[int] = set()
-                    for id_facet, flow_value in flow_through_facet.items():
+                    for facet, flow_value in flow_through_facet.items():
                         # Flow calculated with normal facing out of the compartment
                         # Negative values are in the opposite direction of the
                         if flow_value < 0:
-                            inlet_facets.add(id_facet)
+                            inlet_facets.add(facet)
                         else:
-                            outlet_facet.add(id_facet)
+                            outlet_facet.add(facet)
 
                     surfaces: List[List[int]] = []
                     surfaces.extend(_group_facets_into_surfaces(inlet_facets, mesh))

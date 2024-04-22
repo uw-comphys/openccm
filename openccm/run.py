@@ -26,7 +26,7 @@ from .config_functions import ConfigParser
 from .compartment_models import create_model_network
 from .compartmentalize import calculate_compartments, create_compartment_network
 from .io import load_velocity_and_direction_openfoam
-from .mesh import CMesh, convert_mesh
+from .mesh import CMesh, convert_mesh, convert_velocities_to_flows
 from .postprocessing import convert_to_vtu_and_save, create_element_label_gfu, create_compartment_label_gfu, label_compartments_openfoam, \
                             network_to_rtd, plot_results, visualize_model_network
 from .postprocessing.vtu_output import label_elements_openfoam
@@ -91,7 +91,7 @@ def run(config_parser_or_file: Union[ConfigParser, str]) -> Dict[str, int]:
         np.save(cache_info.name_velocity_vector,  vel_vec)
     timing_dict["Load Solution"] = perf_counter_ns() - start
 
-    # Calculate the compartments
+    # Convert to CMesh
     start = perf_counter_ns()
     if cache_info.already_made_cmesh:
         with open(cache_info.name_cmesh, 'rb') as handle:
@@ -102,12 +102,20 @@ def run(config_parser_or_file: Union[ConfigParser, str]) -> Dict[str, int]:
             pickle.dump(c_mesh, handle, protocol=pickle.HIGHEST_PROTOCOL)
     timing_dict['Create CMesh'] = perf_counter_ns() - start
 
+    # Calculate facet flow_rates
+    if cache_info.already_made_flows_and_upwind_file:
+        flows_and_upwind: np.ndarray = np.load(cache_info.name_flows_and_upwind, allow_pickle=True)
+    else:
+        flows_and_upwind = convert_velocities_to_flows(c_mesh, vel_vec)
+        np.save(cache_info.name_flows_and_upwind, flows_and_upwind)
+
+    # Calculate the compartments
     start = perf_counter_ns()
     if cache_info.already_made_compartments:
         with open(cache_info.name_compartments_pre, 'rb') as handle:
             compartments_pre = pickle.load(handle)
     else:
-        compartments_pre, _ = calculate_compartments(dir_vec, vel_vec, c_mesh, config_parser)
+        compartments_pre, _ = calculate_compartments(dir_vec, flows_and_upwind, c_mesh, config_parser)
         with open(cache_info.name_compartments_pre, 'wb') as handle:
             pickle.dump(compartments_pre, handle, protocol=pickle.HIGHEST_PROTOCOL)
     timing_dict['Compartmentalize'] = perf_counter_ns() - start
@@ -128,7 +136,7 @@ def run(config_parser_or_file: Union[ConfigParser, str]) -> Dict[str, int]:
             compartments_post = pickle.load(handle)
         del compartments_pre  # This will have been loaded only for visualization purposes and can be deleted here to save RAM
     else:
-        compartments_post, compartment_network = create_compartment_network(compartments_pre, c_mesh, dir_vec, vel_vec, config_parser)
+        compartments_post, compartment_network = create_compartment_network(compartments_pre, c_mesh, dir_vec, flows_and_upwind, config_parser)
         with open(cache_info.name_compartments_post, 'wb') as handle:
             pickle.dump(compartments_post, handle, protocol=pickle.HIGHEST_PROTOCOL)
         with open(cache_info.name_compartment_network, 'wb') as handle:
@@ -158,7 +166,7 @@ def run(config_parser_or_file: Union[ConfigParser, str]) -> Dict[str, int]:
         with open(cache_info.name_model_network, 'rb') as handle:
             model_network = pickle.load(handle)
     else:
-        model_network = create_model_network(model, compartments_post, compartment_network, c_mesh, vel_vec, dir_vec, config_parser)
+        model_network = create_model_network(model, compartments_post, compartment_network, c_mesh, dir_vec, flows_and_upwind, config_parser)
         with open(cache_info.name_model_network, 'wb') as handle:
             pickle.dump(model_network, handle, protocol=pickle.HIGHEST_PROTOCOL)
     timing_dict['Reactor Network'] = perf_counter_ns() - start
@@ -221,6 +229,7 @@ class CacheInfo:
         self.name_refined_mesh          = tmp_folder_path + 'sim_fine.vol'
         self.name_velocity_info         = output_folder_path + 'velocity_info.vtu'
         self.name_velocity_vector       = tmp_folder_path + 'vel_vec.npy'
+        self.name_flows_and_upwind    = tmp_folder_path + 'flows_and_upwind.npy'
 
         self.already_made_cfd_processed_results = isfile(self.name_direction_vector) \
                                                   and isfile(self.name_velocity_vector) \
@@ -228,11 +237,12 @@ class CacheInfo:
                                                        and isfile(self.name_refined_mesh)
                                                        and isfile(self.name_velocity_info))
 
-        self.already_made_cmesh                = isfile(self.name_cmesh)
+        self.already_made_cmesh                 = isfile(self.name_cmesh)
         self.already_made_compartments          = isfile(self.name_compartments_pre)
         self.already_made_compartment_network   = isfile(self.name_compartment_network) and isfile(self.name_compartments_post)
         self.already_made_cm_info_vtu           = isfile(self.name_model_info + '.vtu')
         self.already_made_model_network         = isfile(self.name_model_network)
+        self.already_made_flows_and_upwind_file = isfile(self.name_flows_and_upwind)
 
         self.need_opencmp_mesh = OpenCMP and (output_VTK
                                               or not (self.already_made_cmesh and self.already_made_cm_info_vtu))
