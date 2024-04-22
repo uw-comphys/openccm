@@ -818,7 +818,9 @@ def _merge_two_compartments(id_merge_into:              int,
             if id_neighbour == id_merge_into:
                 # Remove the entry for id_to_merge from id_merge_into's dict
                 connection_pairing[id_merge_into].pop(-id_connection)
-            elif id_neighbour >= 0:
+            elif id_neighbour < 0:
+                connection_pairing[id_merge_into][id_connection] = id_neighbour
+            else:
                 # Take all connections with other compartments and hook them up to id_merge_into
                 connection_pairing[id_merge_into][id_connection] = id_neighbour
                 connection_pairing[id_neighbour][-id_connection] = id_merge_into
