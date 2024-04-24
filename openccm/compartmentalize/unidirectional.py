@@ -804,6 +804,9 @@ def _merge_two_compartments(id_merge_into:              int,
     while True:
         compartments[id_merge_into].update(compartments.pop(id_to_merge))
 
+        compartments_to_check = [ _c for _c in compartment_network[id_to_merge].keys() if _c > 0]
+        compartments_to_check.append(id_merge_into)
+
         # Update compartment sizes
         compartment_sizes[id_merge_into] += compartment_sizes[id_to_merge]
         # Setting to infinity to ensure it's above the min_compartment_size
@@ -842,9 +845,6 @@ def _merge_two_compartments(id_merge_into:              int,
                         # Positive connection means an inlet for this connection
                         connection_pairing[id_merge_into][_id_connection] = id_neighbour
                         connection_pairing[id_neighbour] [-_id_connection] = id_merge_into
-
-                if len(connection_pairing[id_neighbour]) == 1 or all_connections_of_same_type(connection_pairing[id_neighbour]):
-                    compartments_to_merge.add(id_neighbour)
 
         assert len(connection_pairing[id_to_merge]) == 0
         connection_pairing.pop(id_to_merge)
@@ -889,7 +889,18 @@ def _merge_two_compartments(id_merge_into:              int,
         # Remove the merged compartment from the network
         compartment_network.pop(id_to_merge)
 
-        if len(connection_pairing[id_merge_into]) == 1  or all_connections_of_same_type(connection_pairing[id_merge_into]):
+        # Check if any of the compartments we interacted with need to be merged
+        for compartment in compartments_to_check:
+            if (len(connection_pairing[compartment]) == 1                               # Only one connection
+                    or all_connections_of_same_type(connection_pairing[compartment])    # All inlets/outlets
+                    or len(compartment_network[compartment]) == 1):                     # Only one neighbour
+                compartments_to_merge.add(compartment)
+
+        # Check if the compartment we merged into needs to now be merged
+        if (len(connection_pairing[id_merge_into]) == 1                             # Only one connection
+                or all_connections_of_same_type(connection_pairing[id_merge_into])  # All inlets/outlets
+                or len(compartment_network[id_merge_into]) == 1                     # Only one neighbour
+            ):
             compartments_to_merge.add(id_merge_into)
 
         if len(compartments_to_merge) == 0:
