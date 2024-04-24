@@ -213,11 +213,11 @@ def create_cstr_network(compartments:           Dict[int, Set[int]],
         outlets: Dict[int, int] = dict()
 
         for id_old, other_csrt in connections_cstr.items():
-            # Need the int() call since the ids are negative in connection_pairings but not in the new_id_for
+            # Need the abs() call since the ids are negative in connection_pairings but not in the new_id_for
             if id_old > 0:
-                inlets[new_id_for[int(id_old)]]   = other_csrt
+                inlets[new_id_for[id_old]]       = other_csrt
             else:
-                outlets[new_id_for[int(-id_old)]] = other_csrt
+                outlets[new_id_for[abs(id_old)]] = other_csrt
 
         assert len(inlets) > 0
         assert len(outlets) > 0

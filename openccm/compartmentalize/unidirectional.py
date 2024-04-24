@@ -98,8 +98,9 @@ def create_compartment_network(compartments:        Dict[int, Set[int]],
                 # If the facet is on the bounds of the mesh, then the element_id will be negative
                 element_other_side = bounding_facets_info[facet][1]
 
-                if element_other_side == mesh.grouped_bcs.no_flux or element_other_side in mesh.grouped_bcs.ignored or \
-                        element_other_side not in element_to_compartment_map:
+                if element_other_side == mesh.grouped_bcs.no_flux \
+                    or element_other_side in mesh.grouped_bcs.ignored \
+                    or element_other_side not in element_to_compartment_map:
                     bounding_facets_info.pop(facet)
 
             # If the compartment has 1 or fewer bounding entities left then it means that it does not have

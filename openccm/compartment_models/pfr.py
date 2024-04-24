@@ -29,7 +29,7 @@ from .helpers import tweak_compartment_flows, tweak_final_flows
 def create_pfr_network(compartments:        Dict[int, Set[int]],
                        compartment_network: Dict[int, Dict[int, Dict[int, int]]],
                        mesh:                CMesh,
-                       flows_and_upwind:             np.ndarray,
+                       flows_and_upwind:    np.ndarray,
                        dir_vec:             np.ndarray,
                        config_parser:       ConfigParser)\
         -> Tuple[
