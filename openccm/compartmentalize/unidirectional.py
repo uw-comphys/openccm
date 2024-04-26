@@ -383,13 +383,21 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
     #       between A and B. This is a problem since this function must return results that can be used by both the
     #       PFR and CSTR modelling approach.
 
-    if model == 'cstr':
-        connection_pairing, volumetric_flows = connect_cstr_compartments(compartment_network, mesh, flows_and_upwind, False, config_parser)
-    elif model == 'pfr':
-        res = connect_pfr_compartments(compartment_network, compartments, mesh, dir_vec, flows_and_upwind, False, config_parser)
-        connection_pairing, volumetric_flows = res[2], res[5]
-    else:
-        raise ValueError(f"Unsupported model type: {model}")
+    def connections_and_flows(model, compartment_network, compartments, mesh, dir_vec, flows_and_upwind, final, configparser) \
+        -> Tuple[
+            Dict[int, Dict[int, int]],
+            Dict[int, float]]:
+
+        if model == 'cstr':
+            connection_pairing, volumetric_flows = connect_cstr_compartments(compartment_network, mesh, flows_and_upwind, final, config_parser)
+        elif model == 'pfr':
+            res = connect_pfr_compartments(compartment_network, compartments, mesh, dir_vec, flows_and_upwind, final, config_parser)
+            connection_pairing, volumetric_flows = res[2], res[5]
+        else:
+            raise ValueError(f"Unsupported model type: {model}")
+        return connection_pairing, volumetric_flows
+
+    connection_pairing, volumetric_flows = connections_and_flows(model, compartment_network, compartments, mesh, dir_vec, flows_and_upwind, False, config_parser)
 
     with open(log_folder_path + "merge.txt", 'w') as logging:
         if DEBUG:
@@ -402,27 +410,30 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
         # Merge all compartments which have only one neighbour or all inlets/outlet.
         # At this point it is possible for compartments to have a single connection.
         # Only after the network has been built is it guaranteed that each compartment has at least 2 connections.
-        compartments_to_merge = set()
-        for id_compartment, connections in connection_pairing.items():
-            if len(connections) <= 1:
-                compartments_to_merge.add(id_compartment)
-            elif all_connections_of_same_type(connections):
-                compartments_to_merge.add(id_compartment)
-        while len(compartments_to_merge) > 0:
-            id_compartment = compartments_to_merge.pop()
-            if len(connection_pairing[id_compartment]) == 1:
-                id_merge_into = list(compartment_network[id_compartment].keys())[0]
-                if id_merge_into in compartments_to_merge and len(compartment_network[id_merge_into]) == 1:
-                    raise AssertionError(f"Compartments {id_compartment} and {id_merge_into} are only connected to each other.")
-            elif all_connections_of_same_type(connection_pairing[id_compartment]):
-                id_merge_into = find_best_merge_target(id_compartment, connection_pairing[id_compartment],
-                                                       compartment_avg_directions)
-            else:
-                pass  # A previous run of _merge_two_compartments merged into one or more compartments into this one
+        def merge_illformed_compartments():
+            compartments_to_merge = set()
+            for id_compartment, connections in connection_pairing.items():
+                if len(connections) <= 1:
+                    compartments_to_merge.add(id_compartment)
+                elif all_connections_of_same_type(connections):
+                    compartments_to_merge.add(id_compartment)
 
-            _merge_two_compartments(id_merge_into, id_compartment, compartments, compartment_network,
-                                    compartment_sizes, connection_pairing, compartment_avg_directions,
-                                    dir_vec, volumetric_flows, cstr=(model == 'cstr'))
+            while len(compartments_to_merge) > 0:
+                id_compartment = compartments_to_merge.pop()
+                if len(connection_pairing[id_compartment]) == 1:
+                    id_merge_into = list(compartment_network[id_compartment].keys())[0]
+                    if id_merge_into in compartments_to_merge and len(compartment_network[id_merge_into]) == 1:
+                        raise AssertionError(f"Compartments {id_compartment} and {id_merge_into} are only connected to each other.")
+                elif all_connections_of_same_type(connection_pairing[id_compartment]):
+                    id_merge_into = find_best_merge_target(id_compartment, connection_pairing[id_compartment], compartment_avg_directions)
+                else:
+                    continue  # A previous run of _merge_two_compartments merged into one or more compartments into this one
+
+                _merge_two_compartments(id_merge_into, id_compartment, compartments, compartment_network,
+                                        compartment_sizes, connection_pairing, compartment_avg_directions,
+                                        dir_vec, volumetric_flows, cstr=(model == 'cstr'))
+
+        merge_illformed_compartments()
 
         # Any compartment connected only to domain inlets/outlets cannot be merged into something else
         for compartment, connections in connection_pairing.items():
@@ -441,6 +452,13 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
                                     dir_vec, volumetric_flows, cstr=(model=='cstr'))
 
         if DEBUG: logging.write("]\n")
+
+        # First calculations of connections did not use thresholds for removing flows since ill-formed compartments
+        # could be too small.
+        # Rerun using thresholds and ensure that by applying thresholds that no compartments become illformed.
+        connection_pairing, volumetric_flows = connections_and_flows(model, compartment_network, compartments, mesh,
+                                                                     dir_vec, flows_and_upwind, True, config_parser)
+        merge_illformed_compartments()
 
         # Check compartments
         for compartment_id, network in compartment_network.items():
