@@ -798,15 +798,19 @@ def _merge_two_compartments(id_merge_into:              int,
         dir_vec:                    Direction vector for each compartment, indexed by compartment ID.
     """
     def sign(x): return 1 if x > 0 else -1
-    compartments_to_merge = set()
 
+    def needs_merging(_compartment) -> bool:
+        return (len(connection_pairing[_compartment]) == 1                          # Only one connection
+                or all_connections_of_same_type(connection_pairing[_compartment])   # All inlets/outlets
+                or len(compartment_network[_compartment]) == 1)                     # Only one neighbour
+
+    compartments_to_merge = set()
     # Merging two compartments can result in one of their neighbours now having a single neighbour.
     # We will keep iterating and merging until there are no such neighbours left
     while True:
         compartments[id_merge_into].update(compartments.pop(id_to_merge))
 
         compartments_to_check = [ _c for _c in compartment_network[id_to_merge].keys() if _c > 0]
-        compartments_to_check.append(id_merge_into)
 
         # Update compartment sizes
         compartment_sizes[id_merge_into] += compartment_sizes[id_to_merge]
@@ -892,28 +896,18 @@ def _merge_two_compartments(id_merge_into:              int,
 
         # Check if any of the compartments we interacted with need to be merged
         for compartment in compartments_to_check:
-            if (len(connection_pairing[compartment]) == 1                               # Only one connection
-                    or all_connections_of_same_type(connection_pairing[compartment])    # All inlets/outlets
-                    or len(compartment_network[compartment]) == 1):                     # Only one neighbour
+            if needs_merging(compartment):
                 compartments_to_merge.add(compartment)
 
-        # Check if the compartment we merged into needs to now be merged
-        if (len(connection_pairing[id_merge_into]) == 1                             # Only one connection
-                or all_connections_of_same_type(connection_pairing[id_merge_into])  # All inlets/outlets
-                or len(compartment_network[id_merge_into]) == 1                     # Only one neighbour
-            ):
-            compartments_to_merge.add(id_merge_into)
-
-        if len(compartments_to_merge) == 0:
-            break  # Only way out of the loop
-        else:
+        while len(compartments_to_merge) > 0:
             id_to_merge = compartments_to_merge.pop()
-            if len(connection_pairing[id_to_merge]) == 1:
-                id_merge_into = list(connection_pairing[id_to_merge].values())[0]
-            elif all_connections_of_same_type(connection_pairing[id_to_merge]):
+            if needs_merging(id_to_merge):
                 id_merge_into = find_best_merge_target(id_to_merge, connection_pairing[id_to_merge], compartment_avg_directions)
+                break  # Break out of inner loop
             else:
                 pass  # Merged INTO it on a previous iteration
+        else:
+            break  # No more compartments to merge, break out of outer loop
 
 
 def _check_flow_requirement(element:            int,
