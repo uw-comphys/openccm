@@ -454,7 +454,7 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
             while len(compartments_to_merge) > 0:
                 id_compartment = compartments_to_merge.pop()
                 if needs_merging(id_compartment, connection_pairing, compartment_network):
-                    id_merge_into = find_best_merge_target(id_compartment, connection_pairing[id_compartment], compartment_avg_directions)
+                    id_merge_into = find_best_merge_target(id_compartment, connection_pairing[id_compartment], compartment_avg_directions, volumetric_flows)
                     _merge_two_compartments(id_merge_into, id_compartment, compartments, compartment_network,
                                             compartment_sizes, connection_pairing, compartment_avg_directions,
                                             dir_vec, volumetric_flows, cstr=(model == 'cstr'))
@@ -472,7 +472,8 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
             id_smallest: int = np.argmin(compartment_sizes)
             if DEBUG: logging.write("smallest: {} ".format(id_smallest))
 
-            id_merge_into = find_best_merge_target(id_smallest, connection_pairing[id_smallest], compartment_avg_directions)
+            id_merge_into = find_best_merge_target(id_smallest, connection_pairing[id_smallest],
+                                                   compartment_avg_directions, volumetric_flows)
             if DEBUG: logging.write("merged into: {}\n".format(id_merge_into))
 
             _merge_two_compartments(id_merge_into, id_smallest, compartments, compartment_network,
@@ -514,12 +515,15 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
     print("Done merging compartments")
 
 
-def find_best_merge_target(id_to_merge: int, connections: Dict[int, int], compartment_avg_directions: np.ndarray):
+def find_best_merge_target(id_to_merge:                 int,
+                           connections:                 Dict[int, int],
+                           compartment_avg_directions:  np.ndarray,
+                           volumetric_flows:            Dict[int, float]) -> int:
     """
     Identify which of id_to_merge's neighbours it should be merged into.
     Criteria used:
-    1. Compartment should be downstream of id_to_merge into
-    2. Compartment with the closest average direction vector is chosen.
+    1. Compartment should be downstream of id_to_merge, if possible.
+    2. Compartment with the largest value of Q_{i->j} * dot(n_i, n_j) is chosen.
 
     Parameters
     ----------
@@ -527,6 +531,7 @@ def find_best_merge_target(id_to_merge: int, connections: Dict[int, int], compar
     * connections:                  Mapping between the connection ID and the compartment on the other side for each
                                     connection of this compartment.
     * compartment_avg_directions:   The average direction vector in each compartment, indexed by compartment ID.
+    * volumetric_flows:             Connection flowrates indexed by connection ID.
 
     Returns
     -------
@@ -535,20 +540,37 @@ def find_best_merge_target(id_to_merge: int, connections: Dict[int, int], compar
     compartment_value = compartment_avg_directions[id_to_merge]
 
     # 1. Filter search, if possible, to compartments downstream of id_to_merge
-    downstream_connection_ids = []
+    upstream_connections, downstream_connections = [], []
     for connection, compartment in connections.items():
-        if connection < 0 and compartment >= 0:  # Positive connections are upstream, negative compartments are boundaries
-            downstream_connection_ids.append(connection)
-    if len(downstream_connection_ids) > 0:
-        id_neighbour_compartment = [connections[i_connection] for i_connection in downstream_connection_ids]
+        if compartment >= 0:
+            if connection < 0:
+                downstream_connections.append(connection)
+            else:
+                upstream_connections.append(connection)
+
+    if len(downstream_connections) > 0:
+        connections_for_merging = downstream_connections
     else:
-        id_neighbour_compartment = list(filter(lambda compartment: compartment >= 0, connections.values()))
+        connections_for_merging = upstream_connections
         print(f"No downstream compartments for {id_to_merge}, merging upstream.")
 
+    neighbours, flows = [], []
+    for connection in connections_for_merging:
+        _neighbour = connections[connection]
+        if _neighbour not in neighbours:
+            neighbours.append(connections[connection])
+            flows.append(volumetric_flows[abs(connection)])
+
+    if len(neighbours) == 1:
+        return neighbours[0]
+
     # 2. Pick the ones with the closest average direction vector
-    neighbour_values = compartment_avg_directions[id_neighbour_compartment]
-    dot_products     = neighbour_values.dot(compartment_value)
-    id_merge_into    = id_neighbour_compartment[np.argmax(dot_products)]
+    dot_products    = compartment_avg_directions[neighbours].dot(compartment_value)
+    Q_times_dot     = dot_products
+    for i, Q in enumerate(flows):
+        Q_times_dot[i] *= Q
+
+    id_merge_into   = neighbours[np.argmax(Q_times_dot)]
     return id_merge_into
 
 
@@ -989,7 +1011,7 @@ def _merge_two_compartments(id_merge_into:              int,
         while len(compartments_to_merge) > 0:
             id_to_merge = compartments_to_merge.pop()
             if needs_merging(id_to_merge, connection_pairing, compartment_network):
-                id_merge_into = find_best_merge_target(id_to_merge, connection_pairing[id_to_merge], compartment_avg_directions)
+                id_merge_into = find_best_merge_target(id_to_merge, connection_pairing[id_to_merge], compartment_avg_directions, volumetric_flows)
                 break  # Break out of inner loop and merge id_to_merge
             else:
                 pass  # Merged INTO it on a previous iteration
