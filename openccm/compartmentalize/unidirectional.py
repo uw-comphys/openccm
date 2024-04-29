@@ -420,18 +420,13 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
 
             while len(compartments_to_merge) > 0:
                 id_compartment = compartments_to_merge.pop()
-                if len(connection_pairing[id_compartment]) == 1:
-                    id_merge_into = list(compartment_network[id_compartment].keys())[0]
-                    if id_merge_into in compartments_to_merge and len(compartment_network[id_merge_into]) == 1:
-                        raise AssertionError(f"Compartments {id_compartment} and {id_merge_into} are only connected to each other.")
-                elif all_connections_of_same_type(connection_pairing[id_compartment]):
+                if needs_merging(id_compartment, connection_pairing, compartment_network):
                     id_merge_into = find_best_merge_target(id_compartment, connection_pairing[id_compartment], compartment_avg_directions)
+                    _merge_two_compartments(id_merge_into, id_compartment, compartments, compartment_network,
+                                            compartment_sizes, connection_pairing, compartment_avg_directions,
+                                            dir_vec, volumetric_flows, cstr=(model == 'cstr'))
                 else:
-                    continue  # A previous run of _merge_two_compartments merged into one or more compartments into this one
-
-                _merge_two_compartments(id_merge_into, id_compartment, compartments, compartment_network,
-                                        compartment_sizes, connection_pairing, compartment_avg_directions,
-                                        dir_vec, volumetric_flows, cstr=(model == 'cstr'))
+                    pass  # A previous iteration merged one or more compartments into this one.
 
         merge_illformed_compartments()
 
@@ -476,9 +471,9 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
 
     num_post_merge = len(compartments)
     num_merged = num_pre_merge - num_post_merge
-    percent_merged = 100. * (num_merged) / num_pre_merge
-
     print(f"Merged {num_merged} compartments")
+
+    percent_merged = 100. * num_merged / num_pre_merge
     if percent_merged > 50:
         print(f"WARNING: Merged {percent_merged:.4f}% compartments. "
               f"Compartmentalization and/or merging tolerances may have been misspecified.")
@@ -524,6 +519,12 @@ def find_best_merge_target(id_to_merge, connections, compartment_avg_directions)
 def all_connections_of_same_type(network: Dict[int, int]):
     keys = list(network.keys())
     return all((x >= 0) == (keys[0] >= 0) for x in keys)
+
+
+def needs_merging(compartment: int, connection_pairing, compartment_network) -> bool:
+    return (len(connection_pairing[compartment]) == 1  # Only one connection
+            or all_connections_of_same_type(connection_pairing[compartment])  # All inlets/outlets
+            or len(compartment_network[compartment]) == 1)                     # Only one neighbour
 
 
 def _calculate_compartments(elements_not_in_a_compartment:  Set[int],
@@ -817,11 +818,6 @@ def _merge_two_compartments(id_merge_into:              int,
     """
     def sign(x): return 1 if x > 0 else -1
 
-    def needs_merging(_compartment) -> bool:
-        return (len(connection_pairing[_compartment]) == 1                          # Only one connection
-                or all_connections_of_same_type(connection_pairing[_compartment])   # All inlets/outlets
-                or len(compartment_network[_compartment]) == 1)                     # Only one neighbour
-
     compartments_to_merge = set()
     # Merging two compartments can result in one of their neighbours now having a single neighbour.
     # We will keep iterating and merging until there are no such neighbours left
@@ -914,14 +910,14 @@ def _merge_two_compartments(id_merge_into:              int,
 
         # Check if any of the compartments we interacted with need to be merged
         for compartment in compartments_to_check:
-            if needs_merging(compartment):
+            if needs_merging(compartment, connection_pairing, compartment_network):
                 compartments_to_merge.add(compartment)
 
         while len(compartments_to_merge) > 0:
             id_to_merge = compartments_to_merge.pop()
-            if needs_merging(id_to_merge):
+            if needs_merging(id_to_merge, connection_pairing, compartment_network):
                 id_merge_into = find_best_merge_target(id_to_merge, connection_pairing[id_to_merge], compartment_avg_directions)
-                break  # Break out of inner loop
+                break  # Break out of inner loop and merge id_to_merge
             else:
                 pass  # Merged INTO it on a previous iteration
         else:
