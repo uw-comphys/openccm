@@ -23,10 +23,11 @@ from ..config_functions import ConfigParser
 from ..mesh import CMesh, GroupedBCs
 
 
-def connect_cstr_compartments(compartment_network: Dict[int, Dict[int, Dict[int, Tuple[int, np.ndarray]]]],
-                              mesh: CMesh,
-                              v_vec: np.ndarray,
-                              config_parser: ConfigParser) \
+def connect_cstr_compartments(compartment_network:      Dict[int, Dict[int, Dict[int, int]]],
+                              mesh:                     CMesh,
+                              flows_and_upwind: np.ndarray,
+                              final:                    bool,
+                              config_parser:            ConfigParser) \
         -> Tuple[Dict[int, Dict[int, int]],
                  Dict[int, float]]:
     """
@@ -45,7 +46,14 @@ def connect_cstr_compartments(compartment_network: Dict[int, Dict[int, Dict[int,
                                         - The 1st is the index of the element upwind of that boundary facet.
                                         - The 2nd is the outward facing unit normal for that boundary facet.
         mesh:                   The mesh the problem was solved on.
-        v_vec:                  Numpy array of velocity vectors, row indexed by element id.
+        flows_and_upwind:       2D object array indexed by facet ID.
+                                - 1st column is volumetric flowrate through facet.
+                                - 2nd column is a flag indicating which of a facet's elements are upwind of it.
+                                    - 0, and 1 represent the index into mesh.facet_elements[facet]
+                                    - -1 is used for boundary elements to represent
+        final:                  If asserts and all calculations should be performed.
+                                This is set to False when function is called from merge_compartments since some may
+                                be too small for the invariants to be true.
         config_parser:          The OpenCCM ConfigParser.
 
     Returns:
@@ -88,12 +96,14 @@ def connect_cstr_compartments(compartment_network: Dict[int, Dict[int, Dict[int,
                 if need_to_do_neighbour_compartment_pair:
                     net_flow = 0.0
 
-                    neighbour_dict: Dict[int, Tuple[int, np.ndarray]] = compartment_network[id_compartment][id_neighbour]
-                    for facet, (upwind_element, normal) in neighbour_dict.items():
-                        net_flow += normal.dot(v_vec[upwind_element]) * mesh.facet_size[facet]
+                    neighbour_dict: Dict[int, int] = compartment_network[id_compartment][id_neighbour]
+                    for facet, element_this_side in neighbour_dict.items():
+                        flow_through_facet, upstream_flag = flows_and_upwind[facet]
+                        inflow = (upstream_flag == -1) or (element_this_side != mesh.facet_elements[facet][upstream_flag])
+                        net_flow += (-1 if inflow else 1) * flow_through_facet
 
                     # If the flow is below the threshold, don't add the connection.
-                    if abs(net_flow) < flow_threshold:
+                    if final and abs(net_flow) < flow_threshold:
                         rejected_connection_pairings.add(pair(id_compartment, id_neighbour))
                         continue
 
@@ -105,8 +115,9 @@ def connect_cstr_compartments(compartment_network: Dict[int, Dict[int, Dict[int,
                     volumetric_flows[id_of_next_connection] = abs(net_flow)
                     id_of_next_connection += 1
 
-        # Must have at least two connections, otherwise mass would accumulate inside the compartment
-        assert len(compartment_connections) > 1
+        if final:
+            # Must have at least two connections, otherwise mass would accumulate inside the compartment
+            assert len(compartment_connections) > 1
 
         connection_pairing[id_compartment] = compartment_connections
 
@@ -114,9 +125,9 @@ def connect_cstr_compartments(compartment_network: Dict[int, Dict[int, Dict[int,
 
 
 def create_cstr_network(compartments:           Dict[int, Set[int]],
-                        compartment_network:    Dict[int, Dict[int, Dict[int, Tuple[int, np.ndarray]]]],
+                        compartment_network:    Dict[int, Dict[int, Dict[int, int]]],
                         mesh:                   CMesh,
-                        vel_vec:                np.ndarray,
+                        flows_and_upwind:       np.ndarray,
                         dir_vec:                np.ndarray,
                         config_parser:          ConfigParser)\
         -> Tuple[
@@ -143,7 +154,11 @@ def create_cstr_network(compartments:           Dict[int, Set[int]],
                                         - The 1st is the index of the element upwind of that boundary facet.
                                         - The 2nd is the outward facing unit normal for that boundary facet.
         mesh:                   The mesh containing the compartments.
-        vel_vec:                Numpy array of velocity vectors, row i is for element i.
+        flows_and_upwind:       2D object array indexed by facet ID.
+                                - 1st column is volumetric flowrate through facet.
+                                - 2nd column is a flag indicating which of a facet's elements are upwind of it.
+                                    - 0, and 1 represent the index into mesh.facet_elements[facet]
+                                    - -1 is used for boundary elements to represent
         dir_vec:                Numpy array of direction vectors, row i is for element i.
         config_parser:          The OpenCCM ConfigParser
 
@@ -167,7 +182,7 @@ def create_cstr_network(compartments:           Dict[int, Set[int]],
     ####################################################################################################################
     # 1. Create connections between compartments
     ####################################################################################################################
-    connection_pairing, _volumetric_flows = connect_cstr_compartments(compartment_network, mesh, vel_vec, config_parser)
+    connection_pairing, _volumetric_flows = connect_cstr_compartments(compartment_network, mesh, flows_and_upwind, True, config_parser)
 
     ####################################################################################################################
     # 2. Calculate volume of each compartment
@@ -198,11 +213,11 @@ def create_cstr_network(compartments:           Dict[int, Set[int]],
         outlets: Dict[int, int] = dict()
 
         for id_old, other_csrt in connections_cstr.items():
-            # Need the int() call since the ids are negative in connection_pairings but not in the new_id_for
+            # Need the abs() call since the ids are negative in connection_pairings but not in the new_id_for
             if id_old > 0:
-                inlets[new_id_for[int(id_old)]]   = other_csrt
+                inlets[new_id_for[id_old]]       = other_csrt
             else:
-                outlets[new_id_for[int(-id_old)]] = other_csrt
+                outlets[new_id_for[abs(id_old)]] = other_csrt
 
         assert len(inlets) > 0
         assert len(outlets) > 0

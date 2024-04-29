@@ -27,9 +27,9 @@ from .helpers import tweak_compartment_flows, tweak_final_flows
 
 
 def create_pfr_network(compartments:        Dict[int, Set[int]],
-                       compartment_network: Dict[int, Dict[int, Dict[int, Tuple[int, np.ndarray]]]],
+                       compartment_network: Dict[int, Dict[int, Dict[int, int]]],
                        mesh:                CMesh,
-                       vel_vec:             np.ndarray,
+                       flows_and_upwind:    np.ndarray,
                        dir_vec:             np.ndarray,
                        config_parser:       ConfigParser)\
         -> Tuple[
@@ -57,7 +57,11 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
                                             - The 1st is the index of the element upwind of that boundary facet.
                                             - The 2nd is the outward facing unit normal for that boundary facet.
         mesh:                   The mesh containing the compartments.
-        vel_vec:                Numpy array of velocity vectors, row i is for element i.
+        flows_and_upwind:       2D object array indexed by facet ID.
+                                - 1st column is volumetric flowrate through facet.
+                                - 2nd column is a flag indicating which of a facet's elements are upwind of it.
+                                    - 0, and 1 represent the index into mesh.facet_elements[facet]
+                                    - -1 is used for boundary elements to represent
         dir_vec:                Numpy array of direction vectors, row i is for element i.
         config_parser:          The OpenCCM ConfigParser
 
@@ -89,7 +93,7 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
     # 1. Create connections between compartments
     ####################################################################################################################
     # 1.1 Initial connections
-    results_1 = connect_pfr_compartments(compartment_network, compartments, mesh, dir_vec, vel_vec, True, config_parser)
+    results_1 = connect_pfr_compartments(compartment_network, compartments, mesh, dir_vec, flows_and_upwind, True, config_parser)
     id_next_connection, connection_distances, connection_pairing, compartment_network, compartments, _volumetric_flows = results_1
 
     # 1.2 Optimize connections to prevent flow reversal when creating the intra-compartment flows.
@@ -112,13 +116,13 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
         connections.sort(key=lambda element: element[0])
 
         # 1.3a Reorder connections
-        connections = _fix_connection_ordering(connections, _volumetric_flows, id_compartment)
+        connections = _fix_connection_ordering(connections, _volumetric_flows, id_compartment, atol_opt)
 
         # 1.3b Re-order domain inlets/outlets
         connections = _fix_domain_boundary_connection_ordering(connections, compartment_connections, mesh.grouped_bcs, id_compartment)
 
         # 1.4 Merge connection locations
-        connections_merged = _merge_connections(connections, _volumetric_flows, dist_threshold, compartment_connections)
+        connections_merged = _merge_connections(connections, _volumetric_flows, dist_threshold, compartment_connections, atol_opt)
 
         # Save the information about the connection locations
         connection_locations[id_compartment] = connections_merged
@@ -421,8 +425,11 @@ def compartments_to_pfrs(connection_locations:      Dict[int, List[Tuple[float, 
     return volumes_pfr, volumetric_flows, all_connection_pairing, compartment_to_pfr_map
 
 
-def _merge_connections(inlets_and_outlets: List[Tuple[float, int]], volumetric_flows: Dict[int, float],
-                       dist_threshold: float, compartment_connections: Dict[int, int])\
+def _merge_connections(inlets_and_outlets:      List[Tuple[float, int]],
+                       volumetric_flows:        Dict[int, float],
+                       dist_threshold:          float,
+                       compartment_connections: Dict[int, int],
+                       atol_opt:                float)\
         -> List[Tuple[float, List[int]]]:
     """
     Function to merge inlets/outlet by changing their location along the compartment.
@@ -446,18 +453,19 @@ def _merge_connections(inlets_and_outlets: List[Tuple[float, int]], volumetric_f
     2. Weighted average (using volumetric flowrate) of all locations to merge.
 
     Args:
-        inlets_and_outlets: List of tuples containing the pre-merging inlets/outlets and their position.
-                            Each tuple has two values, first is a float and the second is an integer.
-                            <p>
-                            - The float represents the position along the length of the compartment of this inlet/outlet.
-                              From 0.0 to 1.0 (inclusive of both ends).
-                            <p>
-                            - The integer represents the ID of this inlet/outlet.
-                              A positive value signifies an inlet and a negative value signifies and outlet.
-        volumetric_flows:   Dictionary to look up the flowrate through each connection by its ID
-        dist_threshold:     The maximum distance between any two points in a merge connection location
+        inlets_and_outlets:         List of tuples containing the pre-merging inlets/outlets and their position.
+                                    Each tuple has two values, first is a float and the second is an integer.
+                                    <p>
+                                    - The float represents the position along the length of the compartment of this inlet/outlet.
+                                      From 0.0 to 1.0 (inclusive of both ends).
+                                    <p>
+                                    - The integer represents the ID of this inlet/outlet.
+                                      A positive value signifies an inlet and a negative value signifies and outlet.
+        volumetric_flows:           Dictionary to look up the flowrate through each connection by its ID
+        dist_threshold:             The maximum distance between any two points in a merge connection location
         compartment_connections:    Dictionary mapping the connection IDs for a compartment
                                     to the compartment on the other side.
+        atol_opt:                   Absolute tolerate used for conservation of mass.
     Returns:
         List of tuples representing the merged inlet/outlets of the compartment
     """
@@ -473,7 +481,6 @@ def _merge_connections(inlets_and_outlets: List[Tuple[float, int]], volumetric_f
     assert inlets_and_outlets[-1][0] == 1.0
     assert inlets_and_outlets[-1][1] < 0
 
-    conservation_of_mass_tolerance = 1e-2
 
     flow_profile: List[Tuple[float, float]] = []
     net_flow = 0.0
@@ -487,7 +494,7 @@ def _merge_connections(inlets_and_outlets: List[Tuple[float, int]], volumetric_f
 
     # The compartments won't be fully conservative due to using a 0th order projection of the velocity.
     # Ensure that the error is not very large.
-    assert 0 < net_flow < conservation_of_mass_tolerance
+    assert 0 < net_flow < atol_opt
 
     # The connections which link to a domain inlet/outlet.
     # They should occur at the end of a compartment, and CANNOT be merged with so that the VTU output looks like it
@@ -624,9 +631,10 @@ def _merge_connections(inlets_and_outlets: List[Tuple[float, int]], volumetric_f
     return lst_return
 
 
-def _fix_connection_ordering(inlets_and_outlets: List[Tuple[float, int]],
-                             volumetric_flows: Dict[int, float],
-                             id_compartment: int) \
+def _fix_connection_ordering(inlets_and_outlets:    List[Tuple[float, int]],
+                             volumetric_flows:      Dict[int, float],
+                             id_compartment:        int,
+                             atol_opt:              float) \
         -> List[Tuple[float, int]]:
     """
     The current approach for ordering the inlets and outlets isn't perfect.
@@ -647,6 +655,7 @@ def _fix_connection_ordering(inlets_and_outlets: List[Tuple[float, int]],
         volumetric_flows:   The volumetric flow through each connection, indexed by connection ID.
         id_compartment:     The ID of the compartment whose inlets & outlets are being fixed.
                             Used only for logging purposes.
+        atol_opt:           Absolute tolerate used for conservation of mass.
     Returns:
         inlets_and_outlets: The re-ordered list of inlets and outlets
     """
@@ -712,7 +721,7 @@ def _fix_connection_ordering(inlets_and_outlets: List[Tuple[float, int]],
     # The compartments won't be fully conservative due to using a 0th order projection of the velocity.
     # The flows will be tweaked after the compartments are modelled as PFRs.
     # For now, we need to ensure that the error is not very large.
-    assert 0 < net_flow < 1e-2
+    assert 0 < net_flow < atol_opt
 
     # Move inlets or outlets around so that the flow inside the compartment
     # (and therefore the intra-compartment connections)
@@ -768,10 +777,10 @@ def _fix_connection_ordering(inlets_and_outlets: List[Tuple[float, int]],
     return inlets_and_outlets
 
 
-def _fix_domain_boundary_connection_ordering(inlets_and_outlets: List[Tuple[float, int]],
-                                             compartment_connections: Dict[int, int],
-                                             grouped_bcs: GroupedBCs,
-                                             id_compartment: int)\
+def _fix_domain_boundary_connection_ordering(inlets_and_outlets:        List[Tuple[float, int]],
+                                             compartment_connections:   Dict[int, int],
+                                             grouped_bcs:               GroupedBCs,
+                                             id_compartment:            int)\
         -> List[Tuple[float, int]]:
     """
     Currently, the merging of small compartments can result in compartments with multiple connections to domain inlets/outlets.
@@ -862,17 +871,17 @@ def _fix_domain_boundary_connection_ordering(inlets_and_outlets: List[Tuple[floa
     return inlets_and_outlets
 
 
-def connect_pfr_compartments(compartment_network:  Dict[int, Dict[int, Dict[int, Tuple[int, np.ndarray]]]],
-                             compartments:         Dict[int, Set[int]],
-                             mesh:                 CMesh,
-                             dir_vec:              np.ndarray,
-                             vel_vec:              np.ndarray,
-                             final:                bool,
-                             config_parser:        ConfigParser) \
+def connect_pfr_compartments(compartment_network:   Dict[int, Dict[int, Dict[int, int]]],
+                             compartments:          Dict[int, Set[int]],
+                             mesh:                  CMesh,
+                             dir_vec:               np.ndarray,
+                             flows_and_upwind:      np.ndarray,
+                             final:                 bool,
+                             config_parser:         ConfigParser) \
         -> Tuple[int,
                  Dict[int, Dict[int, float]],
                  Dict[int, Dict[int, int]],
-                 Dict[int, Dict[int, Dict[int, Tuple[int, np.ndarray]]]],
+                 Dict[int, Dict[int, Dict[int, int]]],
                  Dict[int, Set[int]],
                  Dict[int, float]]:
     """
@@ -899,9 +908,13 @@ def connect_pfr_compartments(compartment_network:  Dict[int, Dict[int, Dict[int,
                                 of the elements in the compartment.
         mesh:                   The mesh the problem was solved on.
         dir_vec:                Numpy array of direction vectors, row i is for element i.
-        vel_vec:                Numpy array of velocity vectors, row i is for element i.
+        flows_and_upwind:       2D object array indexed by facet ID.
+                                - 1st column is volumetric flowrate through facet.
+                                - 2nd column is a flag indicating which of a facet's elements are upwind of it.
+                                    - 0, and 1 represent the index into mesh.facet_elements[facet]
+                                    - -1 is used for boundary elements to represent
         final:                  If asserts and all calculations should be performed.
-                                This is set to True when function is called from merge_compartments since some may
+                                This is set to False when function is called from merge_compartments since some may
                                 be too small for the invariants to be true.
         config_parser:          The OpenCCM ConfigParser
 
@@ -987,8 +1000,10 @@ def connect_pfr_compartments(compartment_network:  Dict[int, Dict[int, Dict[int,
                     # 1. Calculate and store the flowrate through each facet.
                     ###
                     flow_through_facet: Dict[int, float] = dict()
-                    for id_facet, (upwind_element, normal) in compartment_network[id_compartment][neighbour].items():
-                        flow_through_facet[id_facet] = normal.dot(vel_vec[upwind_element]) * mesh.facet_size[id_facet]
+                    for facet, element_this_side in compartment_network[id_compartment][neighbour].items():
+                        flow_through_facet_i, upstream_flag = flows_and_upwind[facet]
+                        inflow = (upstream_flag == -1) or (element_this_side != mesh.facet_elements[facet][upstream_flag])
+                        flow_through_facet[facet] = (-1 if inflow else 1) * flow_through_facet_i
 
                     ###
                     # 2. Calculate the total flowrate with all facets.
@@ -1004,9 +1019,9 @@ def connect_pfr_compartments(compartment_network:  Dict[int, Dict[int, Dict[int,
                     ###
                     # 4. Mark and remove all facets which are below the individual flow threshold.
                     ###
-                    for id_facet in list(flow_through_facet.keys()):
-                        if np.abs(flow_through_facet[id_facet]) < flow_threshold_facet:
-                            flow_through_facet.pop(id_facet)
+                    for facet in list(flow_through_facet.keys()):
+                        if final and np.abs(flow_through_facet[facet]) < flow_threshold_facet:
+                            flow_through_facet.pop(facet)
 
                     ###
                     # 5. Calculate the total flowrate with the remaining facets
@@ -1020,13 +1035,13 @@ def connect_pfr_compartments(compartment_network:  Dict[int, Dict[int, Dict[int,
                     #       into many tiny surfaces.
                     inlet_facets: Set[int] = set()
                     outlet_facet: Set[int] = set()
-                    for id_facet, flow_value in flow_through_facet.items():
+                    for facet, flow_value in flow_through_facet.items():
                         # Flow calculated with normal facing out of the compartment
                         # Negative values are in the opposite direction of the
                         if flow_value < 0:
-                            inlet_facets.add(id_facet)
+                            inlet_facets.add(facet)
                         else:
-                            outlet_facet.add(id_facet)
+                            outlet_facet.add(facet)
 
                     surfaces: List[List[int]] = []
                     surfaces.extend(_group_facets_into_surfaces(inlet_facets, mesh))
@@ -1037,19 +1052,23 @@ def connect_pfr_compartments(compartment_network:  Dict[int, Dict[int, Dict[int,
                     ###
                     flow_through_surfaces: Dict[int, float] = {}
                     for i, surface in enumerate(surfaces):
-                        flow_through_surfaces[i] = sum(flow_through_facet[id_facet] for id_facet in surface) * total_flow / total_flow_thresholded
+                        _flow = sum(flow_through_facet[id_facet] for id_facet in surface) * total_flow / total_flow_thresholded
+                        if not final or abs(_flow) >= flow_threshold:
+                            flow_through_surfaces[i] = _flow
+                        else:
+                            pass
 
                     ###
                     #  8. Calculate the center of flow for each surface.
                     #  9. Store the results
                     ###
                     for i, flowrate in flow_through_surfaces.items():
+                        volumetric_flows[id_of_next_connection] = abs(flowrate)
                         if final:
                             center_of_flow = np.sum([abs(flow_through_facet[facet]) * mesh.facet_centers[facet] for facet in surfaces[i]], 0)
                             center_of_flow /= abs(flow_through_surfaces[i])
 
                             centers_of_flow_for_connection[id_of_next_connection] = center_of_flow
-                            volumetric_flows[id_of_next_connection] = abs(flowrate)
 
                         if flowrate < 0:  # Inlet
                             compartment_connections[id_of_next_connection] = neighbour
@@ -1096,6 +1115,12 @@ def connect_pfr_compartments(compartment_network:  Dict[int, Dict[int, Dict[int,
             logging.write("volumetric_flows: {}\n".format(volumetric_flows))
 
     print("Done finding connections between compartments")
+
+    if final:
+        for connection, flow in volumetric_flows.items():
+            if flow < flow_threshold:
+                raise ValueError(f"Connection {connection} has a flowrate ({flow}) below the threshold ({flow_threshold})")
+
     return id_of_next_connection, connection_distances, connection_pairing, compartment_network, compartments, volumetric_flows
 
 

@@ -92,9 +92,14 @@ def tweak_compartment_flows(
     Returns:
         Nothing. Values are changed implicitly
     """
+    safety_factor = 0.9
+
     # Small epsilon for conservation of mass to ensure that net flow is always positive.
     # Using 0 can cause floating point addition problems when the flow get close to summing to zero.
     eps: float = 1e-6
+
+    if eps >= safety_factor*atol_opt:
+        raise ValueError(f"Absolute tolerance must be greater than {eps/safety_factor:.3e}")
 
     # Scale volumetric flows to avoid numerical issues
     v_min = min(volumetric_flows.values())
@@ -115,7 +120,7 @@ def tweak_compartment_flows(
     A = np.zeros((2*n_compartments, n_flows), dtype='b')
     b = np.ones(2*n_compartments)
     b[:n_compartments] *= -eps/v_min
-    b[n_compartments:] *= 0.9*atol_opt/v_min  # Multiply by 0.9 to avoid any precision issues when comparing floats
+    b[n_compartments:] *= safety_factor*atol_opt/v_min  # Multiply by 0.9 to avoid any precision issues when comparing floats
 
     domain_inlet_outlet_connections = set()
     for compartment, compartment_connections in connection_pairing.items():
@@ -149,10 +154,16 @@ def tweak_compartment_flows(
         assert np.any(A[i, :] > 0)
         assert np.any(A[i, :] < 0)
 
+    for i in range(n_compartments):
+        # It's -b[i] since the first n_compartments constraints are multiplied by negative -1
+        # because they are lower bounds but must be written as upper bounds.
+        if -b[i] >= b[i+n_compartments]:
+            raise ValueError(f"Compartment {i} has infeasible net-inflow constraints: {b[i]:.1e} <= net_inflow <= {b[i+n_compartments]:.1e}")
+
     # Print pre-optimization stats
-    print("Net-outflow compartments = {}".format((b < 0).sum()))
-    print("BEFORE: MAX abs error: {:.4e}".format(np.max(abs(b)) * v_min + eps))
-    print("BEFORE: AVG abs error: {:.4e}".format(np.mean(abs(b)) * v_min + eps))
+    print("Net-outflow compartments = {}".format((b[:n_compartments] < eps/v_min).sum()))
+    print("BEFORE: MAX abs error: {:.4e}".format(np.max(abs(b[:n_compartments])) * v_min + eps))
+    print("BEFORE: AVG abs error: {:.4e}".format(np.mean(abs(b[:n_compartments])) * v_min + eps))
 
     # Solve the equation
     results = linprog(c, A_ub=A, b_ub=b, bounds=(0, None), method='highs', integrality=2)
@@ -166,8 +177,8 @@ def tweak_compartment_flows(
     assert np.all(adjustments >= -eps / v_min)
 
     b_new = b - A @ adjustments
-    print("AFTER:  MAX abs error: {:.4e}".format(np.max(b_new) * v_min + eps))
-    print("AFTER:  AVG abs error: {:.4e}".format(np.mean(b_new) * v_min + eps))
+    print("AFTER:  MAX abs error: {:.4e}".format(np.max(b_new[:n_compartments]) * v_min + eps))
+    print("AFTER:  AVG abs error: {:.4e}".format(np.mean(b_new[:n_compartments]) * v_min + eps))
 
     # Adjust the volumetric flows
     for connection, i in con_to_index.items():
