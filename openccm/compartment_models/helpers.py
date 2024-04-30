@@ -24,9 +24,9 @@ from ..mesh import GroupedBCs
 
 def tweak_compartment_flows(
         connection_pairing: Dict[int, Dict[int, int]],
-        volumetric_flows: Dict[int, float],
-        grouped_bcs: GroupedBCs,
-        atol_opt: float
+        volumetric_flows:   Dict[int, float],
+        grouped_bcs:        GroupedBCs,
+        atol_opt:           float
 ) -> None:
     """
     This function is used to adjust the flowrates in the compartment network so that the net flow around a compartment
