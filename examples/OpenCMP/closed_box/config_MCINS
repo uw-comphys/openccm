@@ -1,0 +1,46 @@
+[MESH]
+filename = box.msh
+curved_elements = False
+
+[FINITE ELEMENT SPACE]
+elements = u -> HDiv
+           p -> L2
+           a -> H1
+interpolant_order = 3
+
+[DG]
+DG = True
+interior_penalty_coefficient = 10.0
+
+[SOLVER]
+solver = default
+preconditioner = default
+linearization_method = Oseen
+nonlinear_tolerance = relative -> 1e-5
+                      absolute -> 1e-6
+nonlinear_max_iterations = 6
+
+[TRANSIENT]
+transient = True
+scheme = adaptive two step
+time_range = 0, 300
+dt = 1.9e-1
+dt_range = 1e-17, 0.19
+dt_tolerance = relative -> 0
+               absolute -> 1e-3
+
+[VISUALIZATION]
+save_to_file = True
+save_type = .vtu
+save_frequency = 0.2, time
+
+[OTHER]
+resume_from_previous = True
+run_dir = .
+num_threads = 4
+model = MultiComponentINS
+component_names = a
+component_in_error_calc = a -> True
+component_in_time_deriv = a -> True
+velocity_fixed = True
+messaging_level = 2

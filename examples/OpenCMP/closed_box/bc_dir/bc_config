@@ -1,0 +1,6 @@
+[DIRICHLET]
+u = wall_fixed   -> [0.0, 0.0]
+    wall_moving -> [1.0, 0.0]
+
+[STRESS]
+u = outlet -> [0.0, 0.0]
