@@ -199,6 +199,24 @@ class CMesh:
         self.facet_size             = self._calculate_facet_sizes()
         """The size of each facet, indexed by its ID. Represents length for 2D meshes and area for 3D meshes."""
         self.facet_size.flags.writeable = False
+        self.element_centroids      = self._calculate_element_centroids()
+        self.element_centroids.flags.writeable = False
+
+    def _calculate_element_centroids(self) -> np.ndarray:
+        """
+        Returns:
+            centroids: A numpy array representing the centroid of each element.
+        """
+        n_elements = len(self.element_vertices)
+        n_dim      = len(self.vertices[0])
+
+        centroids = np.zeros((n_elements, n_dim))
+        for element, vertices in enumerate(self.element_vertices):
+            for vertex in vertices:
+                centroids[element, :] += self.vertices[vertex]
+            centroids[element, :] /= len(vertices)
+
+        return centroids
 
     def _calculate_facet_center(self) -> np.ndarray:
         """
