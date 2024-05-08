@@ -38,7 +38,9 @@ def solve_system(
                             Dict[int, Tuple[Dict[int, int], Dict[int, int]]],
                             np.ndarray,
                             np.ndarray,
-                            Dict[int, List[int]]],
+                            Dict[int, List[int]],
+                            List[List[Tuple[float, int]]]
+                        ],
         config_parser:  ConfigParser,
         cmesh:          CMesh,
 ) -> Tuple[np.ndarray,
@@ -95,7 +97,7 @@ def solve_system(
 
     t_eval = generate_t_eval(config_parser)
 
-    connections, volumes, Q_connections, _ = pfr_network
+    connections, volumes, Q_connections, _, pfr_to_element_map = pfr_network
 
     num_species = len(rxn_species)
     num_pfrs    = len(connections)

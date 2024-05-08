@@ -143,7 +143,8 @@ def create_cstr_network(compartments:           Dict[int, Set[int]],
             Dict[int, Tuple[Dict[int, int], Dict[int, int]]],
             np.ndarray,
             np.ndarray,
-            Dict[int, List[int]]
+            Dict[int, List[int]],
+            List[List[Tuple[float, int]]]
         ]:
     """
     Function to create the CSTR network representation of the compartment model.
@@ -184,6 +185,8 @@ def create_cstr_network(compartments:           Dict[int, Set[int]],
     3. volumetric_flows:        A numpy array of the volumetric flowrate through each connection indexed by its ID.
     4. compartment_to_cstr_map: A new_id_for between a compartment ID and the ID of the CSTR representing it.
                                 Here in order to preserve consistency with create_pfr_network.
+    5. cstr_to_element_map:     A mapping between model ID and an ordered list of tuples containing:
+                                    (element_id, 0). The zero is there to maintain the same type as the PFR version.
     """
     print('Creating CSTR network')
 
@@ -238,5 +241,9 @@ def create_cstr_network(compartments:           Dict[int, Set[int]],
 
     compartment_to_cstr_map: Dict[int, List[int]] = {cstr: [cstr] for cstr in range(len(connections))}
 
+    cstr_to_element_map: List[List[Tuple[float, int]]] = []
+    for compartment in sorted(compartments.keys()):
+        cstr_to_element_map.append([(0.0, element) for element in compartments[compartment]])
+
     print("Done creating CSTR network")
-    return connections, volumes, volumetric_flows, compartment_to_cstr_map
+    return connections, volumes, volumetric_flows, compartment_to_cstr_map, cstr_to_element_map

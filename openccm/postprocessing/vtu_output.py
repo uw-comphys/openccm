@@ -417,7 +417,9 @@ def pfrs_to_vtu_and_save_opencmp(system_results:    Tuple[
                                                         Dict[int, Tuple[Dict[int, int], Dict[int, int]]],
                                                         np.ndarray,
                                                         np.ndarray,
-                                                        Dict[int, List[int]]],
+                                                        Dict[int, List[int]],
+                                                        List[List[Tuple[float, int]]]
+                                                    ],
                                  compartments:      Dict[int, Set[int]],
                                  config_parser:     ConfigParser,
                                  mesh:              'ngsolve.Mesh',
@@ -450,7 +452,7 @@ def pfrs_to_vtu_and_save_opencmp(system_results:    Tuple[
 
 
     y, ts, _, _ = system_results
-    connections, volume_pfrs, q_connections, compartment_to_pfr_map = pfr_network
+    connections, volume_pfrs, q_connections, compartment_to_pfr_map, pfr_to_element_map = pfr_network
     all_elements = [e for e in mesh.Elements()]
 
     fes = L2(mesh, order=0)

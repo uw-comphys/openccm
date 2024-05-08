@@ -72,7 +72,7 @@ def network_to_rtd(system_results:   Tuple[
     species_names    = config_parser.get_list(['SIMULATION', 'specie_names'],   str)
 
     y, t, inlets_map, outlets_map = system_results
-    _, _, q_connections, _ = network
+    _, _, q_connections, _, model_to_element_map = network
 
     # Calculate the mass flow into the reactor.
     inlet_mass_flow_total = sum(q_connections[inlet_info[1]] for inlet_info in inlets_map[id_inlet])
@@ -224,7 +224,7 @@ def visualize_model_network(model_network:  Tuple[
 
     print("Visualizing model network")
 
-    connection, _, _, compartment_to_model_map = model_network
+    connection, _, _, compartment_to_model_map, _ = model_network
 
     ####################################################################################################################
     # 1. Calculate the center for each compartment (projected onto the xy-plane)

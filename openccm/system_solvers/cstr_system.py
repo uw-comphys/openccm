@@ -39,7 +39,9 @@ def solve_system(
                             Dict[int, Tuple[Dict[int, int], Dict[int, int]]],
                             np.ndarray,
                             np.ndarray,
-                            Dict[int, List[int]]],
+                            Dict[int, List[int]],
+                            List[List[Tuple[float, int]]]
+                        ],
         config_parser:  ConfigParser,
         cmesh:          CMesh) \
         -> Tuple[
@@ -94,7 +96,7 @@ def solve_system(
     if os.path.exists('reaction_code_gen.py'):
         os.remove('reaction_code_gen.py')
 
-    connections, volumes, Q_connections, _ = cstr_network
+    connections, volumes, Q_connections, _, _ = cstr_network
 
     inlet_map:  Dict[int, List[Tuple[int, int]]] = defaultdict(list)
     outlet_map: Dict[int, List[Tuple[int, int]]] = defaultdict(list)
