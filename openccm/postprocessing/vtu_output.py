@@ -31,7 +31,7 @@ from typing import Callable, Dict, List, Set, Tuple, Any
 import numpy as np
 
 from ..config_functions import ConfigParser
-from ..mesh import CMesh
+from ..mesh import CMesh, create_dof_to_element_map
 
 OPENFOAM_SCALAR_HEADER = """/*--------------------------------*- C++ -*----------------------------------*\\
   =========                 |
@@ -233,6 +233,106 @@ def label_compartments_openfoam(output_file_name: str, compartments: Dict[int, S
             else:
                 # Copy the original content from input file
                 output_file.write(line)
+
+
+def pfrs_to_vtu_and_save_openfoam(
+        system_results:     Tuple[
+                            np.ndarray,
+                            np.ndarray,
+                            Dict[int, List[Tuple[int, int]]],
+                            Dict[int, List[Tuple[int, int]]]
+                        ],
+        pfr_network:    Tuple[
+                            Dict[int, Tuple[Dict[int, int], Dict[int, int]]],
+                            np.ndarray,
+                            np.ndarray,
+                            Dict[int, List[int]],
+                            List[List[Tuple[float, int]]]
+                        ],
+        compartments:   Dict[int, Set[int]],
+        config_parser:  ConfigParser,
+        cmesh:          CMesh
+) -> None:
+    print("Exporting simulation visualization")
+
+    output_folder_path  = config_parser.get_item(['SETUP',              'output_folder_path'],  str)
+    vtu_folder_path     = config_parser.get_item(['POST-PROCESSING',    'vtu_dir'],             str)
+    points_per_pfr      = config_parser.get_item(['SIMULATION',         'points_per_pfr'],      int)
+    species_names       = config_parser.get_list(['SIMULATION',         'specie_names'],        str)
+
+    num_elements = len(cmesh.element_sizes)
+
+    concentrations_all_time, ts, _, _ = system_results
+    pfr_to_element_map = pfr_network[-1]
+
+    dof_to_element_map = create_dof_to_element_map(pfr_to_element_map, points_per_pfr)
+
+    assert len(dof_to_element_map) == concentrations_all_time.shape[1]
+
+    # t0 will contain several visualization files that are constant in time, will symlink to them for speed and small file size
+    t0_path = os.path.join(output_folder_path + vtu_folder_path + str(ts[0]))
+    contents_of_t0 = [(file_name, os.path.abspath(os.path.join(t0_path, file_name))) for file_name in os.listdir(t0_path)]
+
+    # Initialize to -1 so that any non-compartmentalized elements can be filtered out (assuming only positive values are valid)
+    buffer = -np.ones(num_elements)
+    for i_t, t in enumerate(ts):
+        output_folder = output_folder_path + vtu_folder_path + str(t)
+        # Throw an error if the folder already exists and this is not the first timestep.
+        # First timestep will have been previously created to store compartmentalization info.
+        Path(output_folder).mkdir(parents=True, exist_ok=(i_t == 0))
+
+        if i_t > 0:
+            for file_name, original_path in contents_of_t0:
+                os.symlink(original_path, os.path.join(output_folder, file_name))
+
+        for i_specie, specie in enumerate(species_names):
+            concentrations = concentrations_all_time[i_specie, :, i_t]
+            for dof, mapping in enumerate(dof_to_element_map):
+                for element, dof_other, weight_dof in mapping:
+                    buffer[element] = concentrations[dof] * weight_dof + concentrations[dof_other] * (1 - weight_dof)
+
+            write_buffer_to_file_openfoam(buffer, output_folder + '/c_' + specie, t, specie, cmesh)
+    print("Done exporting simulation visualization")
+
+
+def write_buffer_to_file_openfoam(buffer: np.ndarray, output_file_path: str, t: float, variable_name: str, cmesh: CMesh) -> None:
+    with open(output_file_path, 'w') as output_file:
+        output_file.write(OPENFOAM_SCALAR_HEADER.format(t, variable_name, len(buffer)))
+
+        output_file.write('\n'.join(str(entry) for entry in buffer))
+
+        output_file.write(
+            ")\n"
+            ";\n"
+            "\n"
+            "boundaryField\n"
+            "{\n"
+        )
+
+        for bc_name, facets in cmesh.bc_to_facet_map.items():
+            facet_concentration_values = []
+            for facet in facets:
+                facet_concentration_values.append(f"{buffer[cmesh.facet_elements[facet][0]]}\n")
+
+            facet_concentrations = '\t\t\t'.join(facet_concentration_values)
+
+            output_file.write(f""
+                              f"\t{bc_name}\n"
+                              f"\t{{\n"
+                              f"\t\ttype            calculated;\n"
+                              f"\t\tvalue           nonuniform List<scalar>\n"
+                              f"\t\t{len(facets)}\n"
+                              f"\t\t(\n"
+                              f"\t\t\t{facet_concentrations}"
+                              f"\t\t)\n"
+                              f"\t\t;\n"
+                              f"\t}}\n")
+
+        output_file.write(
+            "}\n"
+            "\n"
+            "// ************************************************************************* //"
+        )
 
 
 def cstrs_to_vtu_and_save_openfoam(
