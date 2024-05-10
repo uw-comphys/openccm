@@ -158,6 +158,35 @@ def label_elements_openfoam(cmesh: CMesh, config_parser: ConfigParser) -> None:
     return
 
 
+def label_models_and_dof_openfoam(cmesh: CMesh, model_to_element_map: List[List[Tuple[float, int]]], config_parser: ConfigParser) -> None:
+    points_per_pfr      = config_parser.get_item(['SIMULATION',             'points_per_pfr'],      int)
+    model_name          = config_parser.get_item(['COMPARTMENT MODELLING',  'model'],               str)
+    output_folder_path  = config_parser.get_item(['SETUP',                  'output_folder_path'],  str)
+    vtu_folder_path     = config_parser.get_item(['POST-PROCESSING',        'vtu_dir'],             str)
+
+    t0 = config_parser.get_list(['SIMULATION', 't_span'], float)[0]
+    output_file_name = str(t0) + '/' + model_name + '_labels'
+    output_file_path = output_folder_path + vtu_folder_path + output_file_name
+
+    element_to_model_map = -np.ones(len(cmesh.element_sizes), dtype=int)
+    for model, distances_element in enumerate(model_to_element_map):
+        for _, element in distances_element:
+            element_to_model_map[element] = model
+    write_buffer_to_file_openfoam(element_to_model_map, output_file_path, t0, model_name + " id", cmesh)
+
+    output_file_name = str(t0) + '/dof_labels'
+    output_file_path = output_folder_path + vtu_folder_path + output_file_name
+
+    dof_to_element_map = create_dof_to_element_map(model_to_element_map, points_per_pfr)
+
+    element_to_dof_map = -np.ones(len(cmesh.element_sizes), dtype=int)
+    for dof, mapping in enumerate(dof_to_element_map):
+        for element, _, _ in mapping:
+            element_to_dof_map[element] = dof
+
+    write_buffer_to_file_openfoam(element_to_dof_map, output_file_path, t0, "dof", cmesh)
+
+
 def label_compartments_openfoam(output_file_name: str, compartments: Dict[int, Set[int]], config_parser: ConfigParser) -> None:
     """
     Label each mesh element with the ID of the compartment it belongs to.

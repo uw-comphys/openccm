@@ -30,8 +30,7 @@ from .compartmentalize import calculate_compartments, create_compartment_network
 from .io import load_velocity_and_direction_openfoam
 from .mesh import CMesh, convert_mesh, convert_velocities_to_flows
 from .postprocessing import convert_to_vtu_and_save, create_element_label_gfu, create_compartment_label_gfu, label_compartments_openfoam, \
-                            network_to_rtd, plot_results, visualize_model_network
-from .postprocessing.vtu_output import label_elements_openfoam
+                            label_elements_openfoam, label_models_and_dof_openfoam, network_to_rtd, plot_results, visualize_model_network
 from .system_solvers import solve_system
 
 
@@ -128,9 +127,8 @@ def run(config_parser_or_file: Union[ConfigParser, str]) -> Dict[str, int]:
 
     if not cache_info.already_made_cm_info_vtu:
         if OpenCMP:
-            compartment_labels_pre = create_compartment_label_gfu(mesh, compartments_pre)
+            compartment_labels_pre_gfu = create_compartment_label_gfu(mesh, compartments_pre)
         else:
-            label_elements_openfoam(c_mesh, config_parser)
             label_compartments_openfoam('compartments_pre', compartments_pre, config_parser)
 
     # Turn the compartments into a network
@@ -148,22 +146,6 @@ def run(config_parser_or_file: Union[ConfigParser, str]) -> Dict[str, int]:
         with open(cache_info.name_compartment_network, 'wb') as handle:
             pickle.dump(compartment_network, handle, protocol=pickle.HIGHEST_PROTOCOL)
     timing_dict['Compartment Network'] = perf_counter_ns() - start
-
-    # Label each element with the compartment ID it belongs to after merging small compartments
-    if not cache_info.already_made_cm_info_vtu:
-        if OpenCMP:
-            compartment_labels_post = create_compartment_label_gfu(mesh, compartments_post)
-            # Create element labels
-            element_labels_gfu = create_element_label_gfu(mesh)
-            with ngcore.TaskManager():
-                VTKOutput(ma=mesh,
-                          coefs=[compartment_labels_pre, compartment_labels_post, element_labels_gfu],
-                          names=['compartment # pre', 'compartment # post', 'element #'],
-                          filename=cache_info.name_model_info,
-                          subdivision=config_parser.get_item(['POST-PROCESSING', 'subdivisions'], int)
-                          ).Do()
-        else:
-            label_compartments_openfoam('compartments_post', compartments_post, config_parser)
     print("End COMPARTMENTALIZE")
 
     # Convert the compartment network to a CSTR/PFR network
@@ -176,6 +158,26 @@ def run(config_parser_or_file: Union[ConfigParser, str]) -> Dict[str, int]:
         with open(cache_info.name_model_network, 'wb') as handle:
             pickle.dump(model_network, handle, protocol=pickle.HIGHEST_PROTOCOL)
     timing_dict['Reactor Network'] = perf_counter_ns() - start
+
+    del compartment_network  # Changed when creating the PFR network, prevents accidentally using it wrong.
+
+    # Label each element with the compartment ID it belongs to after merging small compartments
+    if not cache_info.already_made_cm_info_vtu:
+        if OpenCMP:
+            compartment_labels_post_gfu = create_compartment_label_gfu(mesh, compartments_post)
+            # Create element labels
+            element_labels_gfu = create_element_label_gfu(mesh)
+            with ngcore.TaskManager():
+                VTKOutput(ma=mesh,
+                          coefs=[compartment_labels_pre_gfu, compartment_labels_post_gfu, element_labels_gfu],
+                          names=['compartment # pre', 'compartment # post', 'element #'],
+                          filename=cache_info.name_model_info,
+                          subdivision=config_parser.get_item(['POST-PROCESSING', 'subdivisions'], int)
+                          ).Do()
+        else:
+            label_elements_openfoam(c_mesh, config_parser)
+            label_compartments_openfoam('compartments_post', compartments_post, config_parser)
+            label_models_and_dof_openfoam(c_mesh, model_network[-1], config_parser)
 
     # Visualize the CSTR/PFR network
     if visualize_network:
