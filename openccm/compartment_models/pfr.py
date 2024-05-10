@@ -102,7 +102,7 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
     ####################################################################################################################
     # 1.1 Initial connections
     results_1 = connect_pfr_compartments(compartment_network, compartments, mesh, dir_vec, flows_and_upwind, True, config_parser)
-    id_next_connection, connection_distances, connection_pairing, compartment_network, compartments, _volumetric_flows = results_1
+    id_next_connection, connection_distances, connection_pairing, compartment_network, _volumetric_flows = results_1
     check_network_for_disconnected_subgraphs(connection_pairing)
 
     # 1.2 If it's a closed system, add extra inlet flows to allow for the flows to be tweaked
@@ -941,7 +941,6 @@ def connect_pfr_compartments(compartment_network:   Dict[int, Dict[int, Dict[int
             Dict[int, List[Tuple[float, int]]],
             Dict[int, Dict[int, int]],
             Dict[int, Dict[int, Dict[int, int]]],
-            Dict[int, Set[int]],
             Dict[int, float]
         ]:
     """
@@ -1189,7 +1188,7 @@ def connect_pfr_compartments(compartment_network:   Dict[int, Dict[int, Dict[int
             if flow < flow_threshold:
                 raise ValueError(f"Connection {connection} has a flowrate ({flow}) below the threshold ({flow_threshold})")
 
-    return id_of_next_connection, connection_distances, connection_pairing, compartment_network, compartments, volumetric_flows
+    return id_of_next_connection, connection_distances, connection_pairing, compartment_network, volumetric_flows
 
 
 def _group_facets_into_surfaces(facets: Set[int], mesh: CMesh) -> List[List[int]]:

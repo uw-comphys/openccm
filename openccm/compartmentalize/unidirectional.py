@@ -421,7 +421,7 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
             connection_pairing, volumetric_flows = connect_cstr_compartments(compartment_network, mesh, flows_and_upwind, final, config_parser)
         elif model == 'pfr':
             res = connect_pfr_compartments(compartment_network, compartments, mesh, dir_vec, flows_and_upwind, final, config_parser)
-            connection_pairing, volumetric_flows = res[2], res[5]
+            connection_pairing, volumetric_flows = res[2], res[4]
         else:
             raise ValueError(f"Unsupported model type: {model}")
         return connection_pairing, volumetric_flows
