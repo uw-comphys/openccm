@@ -127,35 +127,17 @@ def label_elements_openfoam(cmesh: CMesh, config_parser: ConfigParser) -> None:
     # t_span has to be loaded as a float and then converted to str so that zero gets handled correctly.
     # Asking for t_span directly as str results in 0 being returned instead of 0.0, which will cause two zero folders
     # to be created. One being 0/ created here, and the other 0.0/ created by output the concentration profile to VTK.
-    time_0 = str(config_parser.get_list(['SIMULATION', 't_span'], float)[0])
+    time_0 = config_parser.get_list(['SIMULATION', 't_span'], float)[0]
     output_file_name = str(time_0) + '/' + 'element_labels'
 
     output_folder_path = config_parser.get_item(['SETUP', 'output_folder_path'], str)
     vtu_folder_path = config_parser.get_item(['POST-PROCESSING', 'vtu_dir'], str)
+    output_folder = output_folder_path + vtu_folder_path + output_file_name
 
     # Create the output directory if it doesn't exist
-    Path(output_folder_path + vtu_folder_path + output_file_name.split("/")[-2]).mkdir(parents=True, exist_ok=True)
+    Path(output_folder_path + vtu_folder_path + str(time_0)).mkdir(parents=True, exist_ok=True)
 
-    num_elements = len(cmesh.element_sizes)
-    with open(output_folder_path + vtu_folder_path + output_file_name, 'w') as output_file:
-        # Write Header
-        output_file.write(OPENFOAM_SCALAR_HEADER.format(time_0, "element_id", num_elements))
-
-        # Write elements
-        for i in range(num_elements):
-            output_file.write(str(i) + '\n')
-        output_file.write(')\n;\n\n')
-
-        # Write boundary info
-        output_file.write('boundaryField\n{\n')
-        for bc_name in cmesh.bc_to_facet_map.keys():
-            output_file.write(f'\t{bc_name}\n')
-            output_file.write('\t{\n')
-            output_file.write('\t\ttype\t\t\tcalculated;\n')
-            output_file.write('\t\tvalue\t\t\tuniform 0;\n')
-            output_file.write('\t}\n')
-        output_file.write('}\n\n')
-    return
+    write_buffer_to_file_openfoam(np.arange(len(cmesh.element_sizes)), output_folder, time_0, 'element ID', cmesh)
 
 
 def label_models_and_dof_openfoam(cmesh: CMesh, model_to_element_map: List[List[Tuple[float, int]]], config_parser: ConfigParser) -> None:
