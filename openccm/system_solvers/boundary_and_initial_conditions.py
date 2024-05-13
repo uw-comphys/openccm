@@ -31,7 +31,7 @@ import sympy as sp
 from sympy.abc import x, y, z, t
 
 from ..config_functions import ConfigParser
-from ..mesh import GroupedBCs
+from ..mesh import CMesh, GroupedBCs
 from .helper_functions import H
 
 BC_TEMPLATE = "@njit(inline='always', cache=True)\n" + \
@@ -190,7 +190,7 @@ def create_boundary_conditions(c0:                  np.ndarray,
         file.write("".join(bc_file_lines))
 
 
-def load_initial_conditions(config_parser: ConfigParser, c0: np.ndarray) -> None:
+def load_initial_conditions(config_parser: ConfigParser, c0: np.ndarray, cmesh: CMesh) -> None:
     """
     Parse the string and load its value into the c0 array at the appropriate indices.
 

@@ -184,7 +184,7 @@ def run(config_parser_or_file: Union[ConfigParser, str]) -> Dict[str, int]:
     # Solve the CSTR/PFR network
     if run_simulation:
         start = perf_counter_ns()
-        system_results = solve_system(model, model_network, config_parser, c_mesh.grouped_bcs)
+        system_results = solve_system(model, model_network, config_parser, c_mesh)
         np.save(output_folder_path + model + '_concentrations.npy', system_results[0])
         np.save(output_folder_path + model + '_t.npy', system_results[1])
         timing_dict['Solve model'] = perf_counter_ns() - start

@@ -30,7 +30,7 @@ from numba import njit
 
 from .helper_functions import generate_t_eval
 from ..config_functions import ConfigParser
-from ..mesh import GroupedBCs
+from ..mesh import GroupedBCs, CMesh
 
 
 def solve_system(
@@ -40,7 +40,7 @@ def solve_system(
                             np.ndarray,
                             Dict[int, List[int]]],
         config_parser:  ConfigParser,
-        grouped_bcs:    GroupedBCs,
+        cmesh:          CMesh,
 ) -> Tuple[np.ndarray,
            np.ndarray,
            Dict[int, List[Tuple[int, int]]],
@@ -64,7 +64,7 @@ def solve_system(
                                     The PFR IDs are stored in the order in which they appear
                                     (i.e. the most upstream PFR is first, and the most downstream PFR is last).
     * config_parser:    OpenCCM ConfigParser used for getting settings.
-    * grouped_bcs:      GroupedBCs object for identifying which connections belong to domain inlets/outlets.
+    * cmesh:            The CMesh from which the PFR network was created.
 
     Returns
     -------
@@ -179,7 +179,7 @@ def solve_system(
                                                         points_per_model=points_per_pfr,
                                                         _ddt_reshape_shape=(num_species, num_pfrs, points_per_pfr),
                                                         inlet_map=inlet_map,
-                                                        grouped_bcs=grouped_bcs,
+                                                        cmesh=cmesh,
                                                         Q_weight_inlets=Q_weight_inlets,
                                                         points_for_bc=points_for_bc,
                                                         t0=t_span[0])
