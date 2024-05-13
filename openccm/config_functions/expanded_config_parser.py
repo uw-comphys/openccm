@@ -142,10 +142,20 @@ class ConfigParser(configparser.ConfigParser):
             self['POST-PROCESSING']['vtu_dir'] = f"compartment_{self['COMPARTMENT MODELLING']['model'].lower()}_vtu/"
             print(f"Using the default value of {self['POST-PROCESSING']['vtu_dir']} for POST-PROCESSING, vtu_dir.")
 
-        # Validate number of species:
         if self['SIMULATION']['run'] == 'True':
-            if 'specie_names' not in self['SIMULATION'] or len(self.get_list(['SIMULATION', 'specie_names'], str)) < 1:
+            # Validate species
+            specie_names = [name.lower() for name in self.get_list(['SIMULATION', 'specie_names'], str)]
+            if 'specie_names' not in self['SIMULATION'] or len(specie_names) == 0:
                 raise ValueError('Need to specify at least 1 specie if running a simulation on the compartmental model.')
+            for special_var in ['x', 'y', 'z', 't']:
+                if special_var in specie_names:
+                    raise ValueError(f"{special_var} is a reserved symbol, cannot use it, or a capitalization of it, as a specie name.")
+
+            # Validate BCs
+            bc_string = self.get_item(['SIMULATION', 'boundary_conditions'], str)
+            for reserved_name in ['point']:
+                if reserved_name in bc_string:
+                    raise ValueError("'point' is a reserved keyword and cannot be used in boundary conditions names.")
 
     def update_paths(self) -> None:
         """

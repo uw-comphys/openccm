@@ -70,6 +70,12 @@ class GroupedBCs:
         self.no_flux_names: Tuple[str, ...] = no_flux_names if no_flux_names else tuple()
         """The names of all boundaries no flow through them; they are removed from the compartmentalization."""
 
+        for reserved_name in ['point']:
+            if (reserved_name in self.no_flux_names
+                    or reserved_name in self.ignored_names
+                    or 'point' in self.domain_in_out_names):
+                raise ValueError("'point' is a reserved keyword and cannot be used in boundary conditions names.")
+
         self.domain_inlets = tuple(self.id(inlet_name) for inlet_name in self.domain_inlet_names)
         """The IDs of all inlet boundaries, in the same order as `domain_inlet_names`."""
         self.domain_outlets = tuple(self.id(outlet_name) for outlet_name in self.domain_outlet_names)
