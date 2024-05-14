@@ -180,11 +180,14 @@ def solve_system(
                                                         c_shape,
                                                         points_per_model=points_per_pfr,
                                                         _ddt_reshape_shape=(num_species, num_pfrs, points_per_pfr),
-                                                        inlet_map=inlet_map,
                                                         cmesh=cmesh,
                                                         Q_weight_inlets=Q_weight_inlets,
+                                                        model_volumes=volumes,
                                                         points_for_bc=points_for_bc,
-                                                        t0=t_span[0])
+                                                        t0=t_span[0],
+                                                        model_to_element_map=pfr_to_element_map,
+                                                        connected_to_another_inlet=connected_to_another_inlet,
+                                                        Q_weight=Q_weight)
 
     args = (Q_weight, _ddt0, connected_to_another_inlet, all_inlet_ids, c_shape, reactions, bcs)
     output = solve_ivp(ddt, t_span, c0, method=solver, atol=atol, rtol=rtol, args=args, first_step=first_timestep, t_eval=t_eval)
