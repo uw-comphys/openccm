@@ -229,11 +229,11 @@ class CacheInfo:
 
         self.name_cmesh                 = tmp_folder_path + 'cmesh.pickle'
         """Filename for saving the CMesh."""
-        self.name_compartments_pre      = tmp_folder_path + 'compartments_pre.pickle'
+        self.name_compartments_pre      = tmp_folder_path + model + '_' + 'compartments_pre.pickle'
         """Filename for saving the compartments before merging."""
-        self.name_compartments_post     = tmp_folder_path + 'compartments_post.pickle'
+        self.name_compartments_post     = tmp_folder_path + model + '_' + 'compartments_post.pickle'
         """Filename for saving the compartments after merging."""
-        self.name_compartment_network   = tmp_folder_path + 'compartment_network.pickle'
+        self.name_compartment_network   = tmp_folder_path + model + '_' + 'compartment_network.pickle'
         """Filename for saving the compartment network."""
         self.name_direction_sol         = tmp_folder_path + 'n_gfu.sol'
         """Filename for saving the director in OpenCMP format."""
