@@ -333,11 +333,11 @@ def compartments_to_pfrs(connection_locations:      Dict[int, List[Tuple[float, 
                         flow_out += volumetric_flows[abs(id_intra_connection)]
 
                 # Flowrate of the new intra-compartment flowrate between this and the next PFR
-                flow_net = flow_out - flow_in
+                flow_intra = flow_in - flow_out
                 # If the net flow is out of this compartment, then the intra-compartment connection between this
                 # and the next DOWNSTREAM compartment will flow backwards in order to balance mass.
                 # This is unphysical.
-                assert flow_net < 0
+                assert flow_intra > 0
                 id_new_connection = -id_of_next_connection
                 id_of_next_connection += 1
 
@@ -351,7 +351,7 @@ def compartments_to_pfrs(connection_locations:      Dict[int, List[Tuple[float, 
                 all_connection_pairing[id_of_next_pfr] = {-id_new_connection: id_pfr}
 
                 # Save the volumetric flow through this connection
-                volumetric_flows[int(abs(id_new_connection))] = abs(flow_net)
+                volumetric_flows[int(abs(id_new_connection))] = flow_intra
 
             # Save the volume of this compartment
             # (total volume * fractional distance between upstream and downstream cutoffs)
