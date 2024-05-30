@@ -524,9 +524,10 @@ def all_connections_of_same_type(network: Dict[int, int]):
 
 
 def needs_merging(compartment: int, connection_pairing, compartment_network) -> bool:
-    return (len(connection_pairing[compartment]) == 1  # Only one connection
-            or all_connections_of_same_type(connection_pairing[compartment])  # All inlets/outlets
-            or len(compartment_network[compartment]) == 1)                     # Only one neighbour
+    return (compartment in connection_pairing                                       # Still exists
+            and (len(connection_pairing[compartment]) == 1                          # Only one connection
+                 or all_connections_of_same_type(connection_pairing[compartment])   # All inlets/outlets
+                 or len(compartment_network[compartment]) == 1))                    # Only one neighbour
 
 
 def _calculate_compartments(elements_not_in_a_compartment:  Set[int],
