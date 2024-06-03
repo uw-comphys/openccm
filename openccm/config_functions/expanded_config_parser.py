@@ -153,18 +153,19 @@ class ConfigParser(configparser.ConfigParser):
             openfoam_sol_folder_path = working_directory + self.get_item(['INPUT', 'openfoam_sol_folder_path'], str)
             self['INPUT']['openfoam_sol_folder_path'] = openfoam_sol_folder_path
 
-            last_time_step = self._find_highest_number()
+            sim_folder_to_use = self.get('INPUT', 'openfoam_sim_folder_to_use', fallback=self._find_highest_number())
+            self['INPUT']['openfoam_sim_folder_to_use'] = sim_folder_to_use
 
             self['INPUT']['face_file_path']      = openfoam_sol_folder_path + "constant/polyMesh/faces"
             self['INPUT']['point_file_path']     = openfoam_sol_folder_path + "constant/polyMesh/points"
             self['INPUT']['owner_file_path']     = openfoam_sol_folder_path + "constant/polyMesh/owner"
             self['INPUT']['neighbour_file_path'] = openfoam_sol_folder_path + "constant/polyMesh/neighbour"
             self['INPUT']['boundary_file_path']  = openfoam_sol_folder_path + "constant/polyMesh/boundary"
-            self['INPUT']['velocity_file_path']  = openfoam_sol_folder_path + last_time_step + "/U"
-            if Path(openfoam_sol_folder_path + last_time_step + "/V").exists():  # OpenFOAM 10
-                self['INPUT']['volume_file_path'] = openfoam_sol_folder_path + last_time_step + "/V"
-            elif Path(openfoam_sol_folder_path + last_time_step + "/Vc").exists():  # OpenFOAM 11
-                self['INPUT']['volume_file_path'] = openfoam_sol_folder_path + last_time_step + "/Vc"
+            self['INPUT']['velocity_file_path']  = openfoam_sol_folder_path + sim_folder_to_use + "/U"
+            if Path(openfoam_sol_folder_path + sim_folder_to_use + "/V").exists():  # OpenFOAM 10
+                self['INPUT']['volume_file_path'] = openfoam_sol_folder_path + sim_folder_to_use + "/V"
+            elif Path(openfoam_sol_folder_path + sim_folder_to_use + "/Vc").exists():  # OpenFOAM 11
+                self['INPUT']['volume_file_path'] = openfoam_sol_folder_path + sim_folder_to_use + "/Vc"
             else:
                 raise FileNotFoundError("Could not find mesh cell size file V or Vc.")
 
