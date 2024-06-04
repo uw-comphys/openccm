@@ -144,6 +144,8 @@ def create_compartment_network(compartments:        Dict[int, Set[int]],
                             else:  # num_connections == 1
                                 id_compartment_chase = id_neighbour
                                 ids_neighbour = [list(compartment_network[id_neighbour].keys())[0]]
+                    else:  # No neighbours, nothing else to do
+                        break
             else:
                 for facet in bounding_facets_info:
                     # Get the element on the other side of the bounding facet.
