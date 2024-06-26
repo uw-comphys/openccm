@@ -280,6 +280,9 @@ def tweak_final_flows(
         if id_connection not in indices_of_domain_inlet_outlet:
             assert np.sum(a[:, id_connection]) == 0
 
+        # Each column must have at least one non-zero entry to indicate that it's been connected to something
+        assert np.any(a[:, id_connection] != 0)
+
     # Each row must have at least one positive and one negative value, otherwise mass would accumulate
     for i in range(a.shape[0]):
         assert np.any(a[i, :] > 0)
