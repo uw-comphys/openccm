@@ -385,7 +385,7 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
     #       between A and B. This is a problem since this function must return results that can be used by both the
     #       PFR and CSTR modelling approach.
 
-    def connections_and_flows(model, compartment_network, compartments, mesh, dir_vec, flows_and_upwind, final, configparser) \
+    def connections_and_flows(model, compartment_network, compartments, mesh, dir_vec, flows_and_upwind, final, config_parser) \
         -> Tuple[
             Dict[int, Dict[int, int]],
             Dict[int, float]]:
