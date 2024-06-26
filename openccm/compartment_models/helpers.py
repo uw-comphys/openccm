@@ -225,11 +225,11 @@ def tweak_final_flows(
     See tweak_compartment_flows for an in-depth description
 
     Args:
-        connections:            Dictionary storing info about which other compartments a given compartment is connected to
-                                    - First key is compartment ID
+        connections:            Dictionary storing info about which other PFR/CSTR a given PFR/CSTR is connected to
+                                    - First key is PFR/CSTR ID
                                     - Values is a Dict[int, int]
-                                        - Key is connection ID (positive inlet into this compartment, negative is outlet)
-                                        - Value is the ID of the compartment on the other side
+                                        - Key is connection ID (positive inlet into this PFR/CSTR, negative is outlet)
+                                        - Value is the ID of the PFR/CSTR on the other side
         volumetric_flows:       Dictionary of the magnitude of volumetric flow through each connection,
                                     indexed by connection ID.
                                     Connection ID in this dictionary is ALWAYS positive, need to take absolute sign of
@@ -251,8 +251,8 @@ def tweak_final_flows(
     # NOTE: There are no inequality constraints
 
     # Build equality constraint (A x = b)
-    # Each row represents a compartment
-    # Each column represents a flowrate
+    # Each row represents a PFR/CSTR
+    # Each column represents a connection
     a = np.zeros((len(connections), c.size), dtype='b')
     indices_of_domain_inlet_outlet = set()
     for id_model in connections:
@@ -272,10 +272,11 @@ def tweak_final_flows(
                 indices_of_domain_inlet_outlet.add(id_connection)
             a[id_model, id_connection] = -1
 
-    # Each column which does not correspond to a domain inlet/out must sum to 0.
-    # Summing to zero means that each time it was marked an inlet it is also marked as an outlet.
-    # Domain inlets/outlet will not match up.
-    for id_connection in connections:
+    # Check that no connection has been missed
+    for id_connection in range(a.shape[1]):
+        # Each column which does not correspond to a domain inlet/out must sum to 0.
+        # Summing to zero means that each time it was marked an inlet it is also marked as an outlet.
+        # Domain inlets/outlet will not match up.
         if id_connection not in indices_of_domain_inlet_outlet:
             assert np.sum(a[:, id_connection]) == 0
 
