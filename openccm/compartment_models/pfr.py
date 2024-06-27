@@ -23,7 +23,7 @@ import numpy as np
 
 from ..config_functions import ConfigParser
 from ..mesh import CMesh, GroupedBCs
-from .helpers import tweak_compartment_flows, tweak_final_flows
+from .helpers import check_network_for_disconnected_subgraphs, tweak_compartment_flows, tweak_final_flows
 
 
 def create_pfr_network(compartments:        Dict[int, Set[int]],
@@ -95,6 +95,7 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
     # 1.1 Initial connections
     results_1 = connect_pfr_compartments(compartment_network, compartments, mesh, dir_vec, flows_and_upwind, True, config_parser)
     id_next_connection, connection_distances, connection_pairing, compartment_network, compartments, _volumetric_flows = results_1
+    check_network_for_disconnected_subgraphs(connection_pairing)
 
     # 1.2 Optimize connections to prevent flow reversal when creating the intra-compartment flows.
     tweak_compartment_flows(connection_pairing, _volumetric_flows, mesh.grouped_bcs, atol_opt)

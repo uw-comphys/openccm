@@ -22,6 +22,36 @@ from scipy.optimize import linprog
 from ..mesh import GroupedBCs
 
 
+def check_network_for_disconnected_subgraphs(connection_pairings: Dict[int, Dict[int, int]]) -> None:
+    """
+    Check if the resulting compartment network contains disconnected subgraphs.
+    Disconnected subgraphs are not allowed as it represents simulation domains which do not have mass transport between them.
+
+    Throws a ValueError if there are disconnected subgraphs.
+
+    Args:
+        connection_pairings:    Mapping between compartment ID and it's neighbours.
+                                Each entry is another mapping between the connection ID and the neibhour ID.
+
+    Returns:
+          ~: None.
+    """
+    uncolored_nodes = set(connection_pairings.keys())
+    num_subgraphs = 0
+
+    while uncolored_nodes:
+        stack = {uncolored_nodes.pop()}
+        while stack:
+            nodes_to_color = set.intersection(set(connection_pairings[stack.pop()].values()), uncolored_nodes)
+            stack.update(nodes_to_color)
+            uncolored_nodes.difference_update(nodes_to_color)
+        num_subgraphs += 1
+
+    if num_subgraphs > 1:
+        raise ValueError(f"There are {num_subgraphs} disconnected subgraphs in the compartment network."
+                         f"Check min_magnitude_threshold, flow_threshold, and boundary conditions (especially any internal ones).")
+
+
 def tweak_compartment_flows(
         connection_pairing: Dict[int, Dict[int, int]],
         volumetric_flows:   Dict[int, float],
