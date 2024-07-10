@@ -18,9 +18,9 @@ from typing import List, Set, Tuple, Dict
 
 import numpy as np
 
-from .helpers import tweak_final_flows
+from .helpers import check_network_for_disconnected_subgraphs, tweak_final_flows
 from ..config_functions import ConfigParser
-from ..mesh import CMesh, GroupedBCs
+from ..mesh import CMesh
 
 
 def connect_cstr_compartments(compartment_network:      Dict[int, Dict[int, Dict[int, int]]],
@@ -183,6 +183,7 @@ def create_cstr_network(compartments:           Dict[int, Set[int]],
     # 1. Create connections between compartments
     ####################################################################################################################
     connection_pairing, _volumetric_flows = connect_cstr_compartments(compartment_network, mesh, flows_and_upwind, True, config_parser)
+    check_network_for_disconnected_subgraphs(connection_pairing)
 
     ####################################################################################################################
     # 2. Calculate volume of each compartment

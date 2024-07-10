@@ -201,18 +201,17 @@ class ConfigParser(configparser.ConfigParser):
         else:
             return highest_name
 
-    def _load_param(self, config_keys: List[str], val_type: Type[T]) -> List[T]:
+    def get_list(self, config_keys: List[str], val_type: Type[T]) -> List[T]:
         """
-        Loads a parameter specified in the given config file. Can also load lists of the specified parameter type.
+        Function to load a list of parameters from the config file.
 
         Args:
-            config_keys: The keys that specify the location of the parameter in the config file (header, subheader...).
-            val_type: The expected parameter type.
+            config_keys: The keys needed to access the parameters from the config file.
+            val_type: The type that each parameter is supposed to be.
 
         Returns:
-            The parameter value or a list of the parameter's values.
+            List of the parameters from the config file in the type specified.
         """
-
         section, key = config_keys
         try:
             params_tmp = self[section][key].split(', ')
@@ -228,22 +227,6 @@ class ConfigParser(configparser.ConfigParser):
 
         return ret_list
 
-    def get_list(self, config_keys: List[str], val_type: Type[T]) -> List[T]:
-        """
-        Function to load a list of parameters from the config file.
-
-        Args:
-            config_keys: The keys needed to access the parameters from the config file.
-            val_type: The type that each parameter is supposed to be.
-
-        Returns:
-            List of the parameters from the config file in the type specified.
-        """
-        ret = self._load_param(config_keys, val_type)
-        assert type(ret) == list
-
-        return cast(List[val_type], ret)
-
     def get_item(self, config_keys: List[str], val_type: Type[T]) -> T:
         """
         Function to load a parameter from the config file.
@@ -255,12 +238,16 @@ class ConfigParser(configparser.ConfigParser):
         Returns:
             The parameter from the config file in the type specified.
         """
-        ret = self._load_param(config_keys, val_type)
+        section, key = config_keys
+        try:
+            param = self[section][key]
+        except KeyError:
+            raise ValueError(f"Need to specify a value for {section}, {key}")
 
-        # Ensure that it's a single value
-        assert len(ret) == 1 and type(ret[0]) == val_type
-
-        return cast(val_type, ret[0])
+        if val_type == bool:
+            return param.lower() == 'true'
+        else:
+            return val_type(param)
     
     def get_expression(self, config_keys: List[str]):
         """

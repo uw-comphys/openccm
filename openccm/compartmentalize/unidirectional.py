@@ -144,6 +144,8 @@ def create_compartment_network(compartments:        Dict[int, Set[int]],
                             else:  # num_connections == 1
                                 id_compartment_chase = id_neighbour
                                 ids_neighbour = [list(compartment_network[id_neighbour].keys())[0]]
+                    else:  # No neighbours, nothing else to do
+                        break
             else:
                 for facet in bounding_facets_info:
                     # Get the element on the other side of the bounding facet.
@@ -383,7 +385,7 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
     #       between A and B. This is a problem since this function must return results that can be used by both the
     #       PFR and CSTR modelling approach.
 
-    def connections_and_flows(model, compartment_network, compartments, mesh, dir_vec, flows_and_upwind, final, configparser) \
+    def connections_and_flows(model, compartment_network, compartments, mesh, dir_vec, flows_and_upwind, final, config_parser) \
         -> Tuple[
             Dict[int, Dict[int, int]],
             Dict[int, float]]:
@@ -522,9 +524,10 @@ def all_connections_of_same_type(network: Dict[int, int]):
 
 
 def needs_merging(compartment: int, connection_pairing, compartment_network) -> bool:
-    return (len(connection_pairing[compartment]) == 1  # Only one connection
-            or all_connections_of_same_type(connection_pairing[compartment])  # All inlets/outlets
-            or len(compartment_network[compartment]) == 1)                     # Only one neighbour
+    return (compartment in connection_pairing                                       # Still exists
+            and (len(connection_pairing[compartment]) == 1                          # Only one connection
+                 or all_connections_of_same_type(connection_pairing[compartment])   # All inlets/outlets
+                 or len(compartment_network[compartment]) == 1))                    # Only one neighbour
 
 
 def _calculate_compartments(elements_not_in_a_compartment:  Set[int],

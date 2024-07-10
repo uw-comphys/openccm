@@ -286,10 +286,10 @@ def ddt(t: float,
     # they impact the concentration of the final node, which is required for the last step
     reactions(c, _ddt)
 
-    if connected_to_another_inlet[0, 0] > 0:  # Negative value used to specify that this term is not needed.
+    if connected_to_another_inlet[0, 0] >= 0:  # Negative value used to specify that this term is not needed.
         # Calculate the change in concentration at the inlet of each PFR due to flow from other connections
         # Note: This MUST be done after the spatial gradient and reactors are calculated since the right hand side here depends on them.
-        for i in range(connected_to_another_inlet.shape[0]):
-            _ddt[:, connected_to_another_inlet[i, 0]] += Q_weight[connected_to_another_inlet[i, 1]] * _ddt[:, connected_to_another_inlet[i, 2]]
+        for (inlet_node, connection, outlet_node) in connected_to_another_inlet:
+            _ddt[:, inlet_node] += Q_weight[connection] * _ddt[:, outlet_node]
 
     return _ddt.ravel()

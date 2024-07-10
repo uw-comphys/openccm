@@ -23,7 +23,7 @@ import numpy as np
 
 from ..config_functions import ConfigParser
 from ..mesh import CMesh, GroupedBCs
-from .helpers import tweak_compartment_flows, tweak_final_flows
+from .helpers import check_network_for_disconnected_subgraphs, tweak_compartment_flows, tweak_final_flows
 
 
 def create_pfr_network(compartments:        Dict[int, Set[int]],
@@ -95,6 +95,7 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
     # 1.1 Initial connections
     results_1 = connect_pfr_compartments(compartment_network, compartments, mesh, dir_vec, flows_and_upwind, True, config_parser)
     id_next_connection, connection_distances, connection_pairing, compartment_network, compartments, _volumetric_flows = results_1
+    check_network_for_disconnected_subgraphs(connection_pairing)
 
     # 1.2 Optimize connections to prevent flow reversal when creating the intra-compartment flows.
     tweak_compartment_flows(connection_pairing, _volumetric_flows, mesh.grouped_bcs, atol_opt)
@@ -333,11 +334,11 @@ def compartments_to_pfrs(connection_locations:      Dict[int, List[Tuple[float, 
                         flow_out += volumetric_flows[abs(id_intra_connection)]
 
                 # Flowrate of the new intra-compartment flowrate between this and the next PFR
-                flow_net = flow_out - flow_in
+                flow_intra = flow_in - flow_out
                 # If the net flow is out of this compartment, then the intra-compartment connection between this
                 # and the next DOWNSTREAM compartment will flow backwards in order to balance mass.
                 # This is unphysical.
-                assert flow_net < 0
+                assert flow_intra > 0
                 id_new_connection = -id_of_next_connection
                 id_of_next_connection += 1
 
@@ -351,7 +352,7 @@ def compartments_to_pfrs(connection_locations:      Dict[int, List[Tuple[float, 
                 all_connection_pairing[id_of_next_pfr] = {-id_new_connection: id_pfr}
 
                 # Save the volumetric flow through this connection
-                volumetric_flows[int(abs(id_new_connection))] = abs(flow_net)
+                volumetric_flows[int(abs(id_new_connection))] = flow_intra
 
             # Save the volume of this compartment
             # (total volume * fractional distance between upstream and downstream cutoffs)

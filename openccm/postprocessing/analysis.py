@@ -284,9 +284,28 @@ def visualize_model_network(model_network:  Tuple[
     ####################################################################################################################
     # 5. Push all of the nodes slightly apart so that they don't overlap and so that you can see the arrowheads
     ####################################################################################################################
+    x_min = np.inf
+    x_max = -np.inf
+    y_min = np.inf
+    y_max = -np.inf
+    for point in positions.values():
+        x_min = min(x_min, point[0])
+        x_max = max(x_max, point[0])
+        y_min = min(y_min, point[1])
+        y_max = max(y_max, point[1])
+
+    width = x_max - x_min
+    height = y_max - y_min
+    num_points = len(positions)
+
+    # Diameter in inches based on fixed size of 300
+    d_point = 0.26
+    scale = np.sqrt(num_points * d_point**2 / (width*height))
+    for position in positions.values():
+        position[0] *= max(1, scale)
+        position[1] *= max(1, scale)
+
     min_distance_between_nodes = 0.1
-    for id in positions:
-        positions[id] *= 1 + 2*min_distance_between_nodes
     spread_out_nodes(positions, min_distance_between_nodes)
 
     ####################################################################################################################
@@ -325,7 +344,7 @@ def visualize_model_network(model_network:  Tuple[
             node_color.append(compartment)
 
     plt.figure(figsize=(width, height))
-    nx.draw(graph, pos=positions, with_labels=True, font_weight='bold', node_color=node_color, cmap=plt.cm.coolwarm)
+    nx.draw(graph, pos=positions, with_labels=True, font_weight='bold', node_color=node_color, node_size=300, cmap=plt.cm.coolwarm)
     plt.savefig(config_parser.get_item(['SETUP', 'output_folder_path'], str) + 'compartment_network.pdf')
 
     print("Done visualizing model network")

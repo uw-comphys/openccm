@@ -19,12 +19,13 @@ model = PFR
 [SIMULATION]
 run                 = True
 t_span              = 0, 20
+first_timestep      = 0.0001
 points_per_pfr      = 101
 specie_names        = a, b
 reactions_file_path = reactions
 initial_conditions  = a -> 0
                       b -> 0
-boundary_conditions = a: left -> H(100*t)
+boundary_conditions = a: left -> H(10*t)
                       b: left -> 0
 
 [POST-PROCESSING]

@@ -13,6 +13,7 @@ min_compartment_size = 0.05
 
 [COMPARTMENT MODELLING]
 model = CSTR
+flow_threshold = 1e-6
 
 [SIMULATION]
 run                 = True

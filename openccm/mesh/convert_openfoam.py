@@ -25,30 +25,15 @@ from ..config_functions import ConfigParser
 from ..io import read_boundary_condition, read_mesh_data
 
 
-def convert_mesh_openfoam(config_parser: ConfigParser):
+def convert_mesh_openfoam(config_parser: ConfigParser) -> CMesh:
     """
-    Read OpenFOAM mesh information from file and convert it into OpenCCM's internal format.
+    Read OpenFOAM mesh information from file and convert it into OpenCCM's internal CMesh format.
 
     Args:
         config_parser:  OpenCCM ConfigParser from which to get the required OpenFOAM data.
 
     Returns:
-        vertices:               N*M numpy array with each row is for one of the N vertices.
-                                Each column is the coordinate along the Mth dimension.
-        facet_elements:         Tuple of element IDs that share a facet.
-        facet_vertices:         Tuple of vertex IDs that make up a facet.
-        facet_connectivity:     Tuple of tuples containing the neighbours (sharing a vertex) of all facets in the mesh
-        facet_sizes:            Size (area or length depending on mesh dimension) of each facet, indexed by its ID.
-        facet_normals:          The unit normal to the facet pointing OUT of the first element in facet_elements[facet]
-        facet_center:           NxM numpy array containing the center of each facet.
-                                Each represents of the N facets (by id), each column represents each of the M dimensions.
-        element_facets:         Tuple of facet IDs that bound an element.
-        element_vertices:       Tuple of vertex IDs that bound and element.
-        element_connectivity:   Dictionary indexed by element number which returns a list of element number representing
-                                the neighbours of the key element.
-                                NOTE: This value WILL be modified by the compartmentalization scheme. Elements will be
-                                      Removed from here if they're deemed ineligible for compartmentalization, e.g.
-                                      because they have a magnitude of 0.
+        cmesh: The internal CMesh representation of the OpenFOAM mesh.
     """
     print("Converting Mesh")
     # Note: These file paths are NOT manually specified by the user. They are automatically generated

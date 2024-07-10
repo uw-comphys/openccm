@@ -93,6 +93,21 @@ class CMesh:
                  grouped_bcs: GroupedBCs,
                  facet_to_bc_map: np.ndarray,
                  bc_to_facet_map: Dict[str, Tuple[int, ...]]):
+        """
+        Args:
+            vertices:               N*M numpy array with each row is for one of the N vertices.
+                                    Each column is the coordinate along the Mth dimension.
+            facet_elements:         Tuple of element IDs that share a facet.
+            facet_vertices:         Tuple of vertex IDs that make up a facet.
+            facet_connectivity:     Tuple of tuples containing the neighbours (sharing a vertex) of all facets in the mesh
+            element_facets:         Tuple of facet IDs that bound an element.
+            element_vertices:       Tuple of vertex IDs that bound and element.
+            element_connectivity:   Dictionary indexed by element number which returns a list of element number representing
+                                    the neighbours of the key element.
+                                    NOTE: This value WILL be modified by the compartmentalization scheme. Elements will be
+                                          Removed from here if they're deemed ineligible for compartmentalization, e.g.
+                                          because they have a magnitude of 0.
+        """
 
         # All of these must be calculated in different ways based on the simulation package they come from.
         # Some may not seem so (e.g. element connectivity), but it makes more sense to leave them
