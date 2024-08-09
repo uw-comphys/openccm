@@ -53,7 +53,7 @@ config_defaults: Dict = {
                         'plot_results': False,
                         'output_vtk': False,
                         'calculate_rtd': False,
-                        'network_diagram': True,
+                        'network_diagram': False,
                         'subdivisions': 0,
                         'interpolant_order': 1},
 }
