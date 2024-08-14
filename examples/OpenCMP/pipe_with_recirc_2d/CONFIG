@@ -20,20 +20,14 @@ model = PFR
 run                 = True
 t_span              = 0, 300
 points_per_pfr      = 2
-specie_names        = a, b, c, d
+specie_names        = a
 ;reactions_file_path = reactions
 initial_conditions  = a -> 0
-                      b -> 0
-                      c -> 0
-                      d -> 0
 boundary_conditions = a: inlet -> 1
-                      b: inlet -> 1
-                      c: inlet -> 0
-                      d: inlet -> 0
 
 [POST-PROCESSING]
 inlet_bc_name          = inlet
 outlet_bc_name         = outlet
 output_VTK             = False
-calculate_rtd          = False
+calculate_rtd          = True
 plot_results           = True
