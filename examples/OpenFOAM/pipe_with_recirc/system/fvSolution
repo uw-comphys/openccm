@@ -16,6 +16,14 @@ FoamFile
 
 solvers
 {
+    T
+    {
+        solver          PBiCGStab;
+        preconditioner  DILU;
+        tolerance       1e-08;
+        relTol          0;
+    }
+
     p
     {
         solver          GAMG;
@@ -43,7 +51,7 @@ solvers
     }
 }
 
-SIMPLE
+PIMPLE
 {
     nNonOrthogonalCorrectors 0;
 
