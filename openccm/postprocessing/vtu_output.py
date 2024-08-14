@@ -275,8 +275,12 @@ def cstrs_to_vtu_and_save_openfoam(
         Path(output_folder_time).mkdir(parents=True, exist_ok=(i == 0))
 
         if i > 0:
-            os.symlink(post_source, os.path.join(output_folder_time, "compartments_post"))
-            os.symlink(pre_source,  os.path.join(output_folder_time, "compartments_pre"))
+            try:
+                os.symlink(post_source, os.path.join(output_folder_time, "compartments_post"))
+                os.symlink(pre_source,  os.path.join(output_folder_time, "compartments_pre"))
+            except OSError:
+                shutil.copy(post_source, os.path.join(output_folder_time, "compartments_post"))
+                shutil.copy(pre_source, os.path.join(output_folder_time, "compartments_pre"))
 
         for specie_id, specie_name in enumerate(species_names):
             with (open(output_folder_time + '/c_' + specie_name, 'w') as output_file):
