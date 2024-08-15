@@ -22,6 +22,7 @@ ddtSchemes
 gradSchemes
 {
     default         Gauss linear;
+    grad(T)         cellLimited Gauss linear 1;
 }
 
 divSchemes
@@ -30,6 +31,7 @@ divSchemes
     div(phi,U)      bounded Gauss linearUpwind grad(U);
     div(phi,nuTilda) bounded Gauss linearUpwind grad(nuTilda);
     div((nuEff*dev2(T(grad(U))))) Gauss linear;
+    div(phi,T)      Gauss upwind grad(T);
 }
 
 laplacianSchemes

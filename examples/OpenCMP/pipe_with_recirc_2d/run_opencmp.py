@@ -8,4 +8,4 @@ if __name__ == "__main__":
     run("config_INS")
 
     # Run MCINS
-    # run("config_MCINS")
+    run("config_MCINS")

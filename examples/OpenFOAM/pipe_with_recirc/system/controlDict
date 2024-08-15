@@ -14,21 +14,28 @@ FoamFile
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-application     simpleFoam;
+application     foamRun;
 
-startFrom       startTime;
+// For steady-state velocity
+//solver          incompressibleFluid;
+
+// For tracer
+solver          functions;
+subSolver       incompressibleFluid;
+
+startFrom       latestTime;
 
 startTime       0;
 
 stopAt          endTime;
 
-endTime         2000;
+endTime         300;
 
-deltaT          1;
+deltaT          0.2;
 
-writeControl    timeStep;
+writeControl    runTime;
 
-writeInterval   1000;
+writeInterval   0.2;
 
 purgeWrite      0;
 
@@ -46,6 +53,7 @@ runTimeModifiable true;
 
 functions{
 	#includeFunc writeCellVolumes 
-	}
+        #includeFunc scalarTransport(T, diffusivity=constant, D = 0.00001)
+}
 
 // ************************************************************************* //
