@@ -139,18 +139,11 @@ def rtd_cfd() -> np.ndarray:
 
 
 def rtd_cm() -> Tuple[np.ndarray, np.ndarray]:
-    # Get all the results folders
-    sim_folder = Path(".")
-
-    cm_output_folder = Path(str(sim_folder) + "/output_ccm/")
-    rtd_pfr_path     = Path(str(cm_output_folder) + "/pfr_rtd.npy")
-    rtd_cstr_path    = Path(str(cm_output_folder) + "/cstr_rtd.npy")
-
-    if not cm_output_folder.exists():
-        working_directory = str(sim_folder) + "/"
-        for model in ['cstr', 'pfr']:
+    data: Dict[str, np.ndarray] = dict()
+    for model in ['cstr', 'pfr']:
+        data_path = Path(f"./output_ccm/{model}_rtd.npy")
+        if not data_path.exists():
             config_parser = ConfigParser("CONFIG")
-            config_parser['SETUP']['working_directory'] = working_directory
             config_parser['COMPARTMENT MODELLING']['model'] = model
             if model == 'cstr':
                 config_parser['SIMULATION']['points_per_pfr'] = '1'
@@ -158,22 +151,14 @@ def rtd_cm() -> Tuple[np.ndarray, np.ndarray]:
 
             run(config_parser)
 
-            if Path(working_directory + "cache/").exists():
-                rmtree(working_directory + "cache/")
-            if Path(working_directory + "log/").exists():
-                rmtree(working_directory + "log/")
+            if Path("./cache/").exists():
+                rmtree("./cache/")
+            if Path("./log/").exists():
+                rmtree("./log/")
 
-    if rtd_pfr_path.exists():
-        data_pfr = np.load(str(rtd_pfr_path)).squeeze()
-    else:
-        raise FileNotFoundError("PFR data not found")
+        data[model] = np.load(str(data_path.absolute())).squeeze()
 
-    if rtd_cstr_path.exists():
-        data_cstr = np.load(str(rtd_cstr_path)).squeeze()
-    else:
-        raise FileNotFoundError("CSTR data not found")
-
-    return data_pfr, data_cstr
+    return data['pfr'], data['cstr']
 
 
 def plot_results(data_cfd:      np.ndarray,
@@ -213,6 +198,7 @@ def plot_results(data_cfd:      np.ndarray,
     plt.ylabel("Tracer Concentration")
     Path('figures').mkdir(parents=True, exist_ok=True)
     plt.savefig('figures/CFD vs PFR vs CSTR.pdf')
+
 
 if __name__ == "__main__":
     data_pfr, data_cstr  = rtd_cm()
