@@ -620,7 +620,7 @@ def _calculate_compartments(elements_not_in_a_compartment:  Set[int],
                 # 3. Compare the alignment of the seed element to that of all the neighbours
                 ############################################################################################################
                 # Calculate the dot product
-                angle_result = np.arccos(director_neighbours.dot(director_seed)) * 180/np.pi
+                angle_result = np.arccos(np.round(director_neighbours.dot(director_seed), 4)) * 180 / np.pi
 
                 # Compare the dot product to the tolerance
                 check = angle_result <= angle_threshold
