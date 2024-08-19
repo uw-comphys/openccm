@@ -89,6 +89,8 @@ def create_boundary_conditions(c0:                  np.array,
         "from math import *\n",
         "from numba import njit\n",
         "from numpy import array, ndarray\n",
+        "\n"
+        "import numpy as np"
         "\n",
         "\n",
     ]
