@@ -1,11 +1,9 @@
 from shutil import rmtree
-from typing import List, Tuple, Dict, Optional
+from typing import List, Tuple, Dict
 from pathlib import Path
 
-import pickle
 
 import numpy as np
-import scipy as sp
 import matplotlib.pyplot as plt
 
 
