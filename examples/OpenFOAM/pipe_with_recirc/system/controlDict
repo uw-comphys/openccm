@@ -17,7 +17,7 @@ FoamFile
 application     foamRun;
 
 // For steady-state velocity
-//solver          incompressibleFluid;
+// solver          incompressibleFluid;
 
 // For tracer
 solver          functions;
@@ -53,7 +53,7 @@ runTimeModifiable true;
 
 functions{
 	#includeFunc writeCellVolumes 
-        #includeFunc scalarTransport(T, diffusivity=constant, D = 0.00001)
+    #includeFunc scalarTransport(T, diffusivity=constant, D = 0.00001)
 }
 
 // ************************************************************************* //
