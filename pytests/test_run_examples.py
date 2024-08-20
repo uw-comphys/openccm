@@ -2,6 +2,8 @@
 from pathlib import Path
 import shutil
 from openccm import run, ConfigParser
+from opencmp.run import run as run_opencmp
+from opencmp.config_functions import ConfigParser as OpenCMPConfigParser
 
 rel_path_to_examples = '../examples/'
 
@@ -41,7 +43,23 @@ def test_opencmp_pfr():
 
 
 def test_opencmp_recirc():
-    clean_and_run(rel_path_to_examples + 'OpenCMP/pipe_with_recirc_2d/')
+    path_to_folder = rel_path_to_examples + 'OpenCMP/pipe_with_recirc_2d/'
+
+    configparser_ccm = ConfigParser(path_to_folder + 'CONFIG')
+    configparser_ccm['SETUP']['working_directory'] = path_to_folder
+
+    if not Path(path_to_folder + configparser_ccm['INPUT']['opencmp_sol_file_path']).exists():
+        configparser = OpenCMPConfigParser(path_to_folder + 'config_Stokes')
+        configparser['MESH']['filename'] = path_to_folder + configparser['MESH']['filename']
+        configparser['OTHER']['run_dir'] = path_to_folder
+        run_opencmp("", configparser)
+
+        configparser = OpenCMPConfigParser(path_to_folder + 'config_INS')
+        configparser['MESH']['filename'] = path_to_folder + configparser['MESH']['filename']
+        configparser['OTHER']['run_dir'] = path_to_folder
+        run_opencmp("", configparser)
+
+    clean_and_run(path_to_folder)
 
 
 def test_openfoam_2d_pipe():
