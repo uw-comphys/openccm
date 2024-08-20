@@ -476,8 +476,8 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
     print(f"Merged {num_merged} compartments")
 
     percent_merged = 100. * num_merged / num_pre_merge
-    if percent_merged > 50:
-        print(f"WARNING: Merged {percent_merged:.4f}% compartments. "
+    if percent_merged > 80:
+        print(f"WARNING: Merged {percent_merged:.1f}% compartments. "
               f"Compartmentalization and/or merging tolerances may have been misspecified.")
 
     print("Done merging compartments")
