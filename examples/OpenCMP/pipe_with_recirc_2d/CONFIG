@@ -10,8 +10,10 @@ domain_inlet_names  = ("inlet",)
 domain_outlet_names = ("outlet",)
 
 [COMPARTMENTALIZATION]
-bc_names_for_seeds  = ("inlet",)
-min_compartment_size = 0.05
+bc_names_for_seeds      = ("inlet",)
+min_compartment_size    = 0.005
+angle_threshold         = 30
+flow_threshold          = 40
 
 [COMPARTMENT MODELLING]
 model = PFR
