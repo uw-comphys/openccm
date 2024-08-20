@@ -503,12 +503,12 @@ def find_best_merge_target(id_to_merge, connections, compartment_avg_directions)
     # 1. Filter search, if possible, to compartments downstream of id_to_merge
     downstream_connection_ids = []
     for connection, compartment in connections.items():
-        if connection < 0 and compartment > 0:
+        if connection < 0 and compartment >= 0:  # Positive connections are upstream, negative compartments are boundaries
             downstream_connection_ids.append(connection)
     if len(downstream_connection_ids) > 0:
         id_neighbour_compartment = [connections[i_connection] for i_connection in downstream_connection_ids]
     else:
-        id_neighbour_compartment = list(filter(lambda compartment: compartment > 0, connections.values()))
+        id_neighbour_compartment = list(filter(lambda compartment: compartment >= 0, connections.values()))
         print(f"No downstream compartments for {id_to_merge}, merging upstream.")
 
     # 2. Pick the ones with the closest average direction vector
