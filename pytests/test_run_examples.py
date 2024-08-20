@@ -1,9 +1,9 @@
+import importlib
+import pytest
+import shutil
 
 from pathlib import Path
-import shutil
 from openccm import run, ConfigParser
-from opencmp.run import run as run_opencmp
-from opencmp.config_functions import ConfigParser as OpenCMPConfigParser
 
 rel_path_to_examples = '../examples/'
 
@@ -30,19 +30,26 @@ def clean_and_run(working_directory: str) -> None:
     run(configparser)
 
 
+@pytest.mark.skipif(not importlib.util.find_spec("opencmp"), reason="requires OpenCMP")
 def test_opencmp_cstr_reversible():
     clean_and_run(rel_path_to_examples + 'simple_reactors/cstr/reversible/')
 
 
+@pytest.mark.skipif(not importlib.util.find_spec("opencmp"), reason="requires OpenCMP")
 def test_opencmp_cstr_irreversible():
     clean_and_run(rel_path_to_examples + 'simple_reactors/cstr/irreversible/')
 
 
+@pytest.mark.skipif(not importlib.util.find_spec("opencmp"), reason="requires OpenCMP")
 def test_opencmp_pfr():
     clean_and_run(rel_path_to_examples + 'simple_reactors/pfr/')
 
 
+@pytest.mark.skipif(not importlib.util.find_spec("opencmp"), reason="requires OpenCMP")
 def test_opencmp_recirc():
+    from opencmp.run import run as run_opencmp
+    from opencmp.config_functions import ConfigParser as OpenCMPConfigParser
+
     path_to_folder = rel_path_to_examples + 'OpenCMP/pipe_with_recirc_2d/'
 
     configparser_ccm = ConfigParser(path_to_folder + 'CONFIG')
