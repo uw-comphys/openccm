@@ -1,0 +1,41 @@
+[INPUT]
+opencmp_config_file_path    = config_INS
+opencmp_sol_file_path       = output/ins_sol/ins_0.0.sol
+num_refinements             = 1
+min_magnitude_threshold     = 6e-5
+
+no_flux_names       = ("wall",)
+ignored_names       = None
+domain_inlet_names  = ("inlet",)
+domain_outlet_names = ("outlet",)
+
+[COMPARTMENTALIZATION]
+bc_names_for_seeds      = ("inlet",)
+min_compartment_size    = 0.05
+angle_threshold         = 30
+flow_threshold          = 40
+
+[COMPARTMENT MODELLING]
+model = PFR
+
+[SIMULATION]
+run                 = True
+t_span              = 0, 300
+points_per_pfr      = 2
+specie_names        = NaCl, CaCO3, Na2CO3, CaCl2
+reactions_file_path = reactions
+initial_conditions  = NaCl   -> 0
+                      CaCO3  -> 0
+                      Na2CO3 -> 0
+                      CaCl2  -> 0
+boundary_conditions = NaCl:   inlet -> 1
+                      CaCO3:  inlet -> 1
+                      Na2CO3: inlet -> 0
+                      CaCl2:  inlet -> 0
+
+[POST-PROCESSING]
+inlet_bc_name          = inlet
+outlet_bc_name         = outlet
+output_VTK             = False
+calculate_rtd          = False
+plot_results           = True
