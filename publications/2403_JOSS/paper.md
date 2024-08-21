@@ -34,7 +34,7 @@ bibliography: paper.bib
 
 `OpenCCM` is a compartmental modelling [@Jourdan2019] software package which is based on recently-developed fully automated flow alignment compartmentalization methods [@Vasile2024]. It is primarily intended for large-scale flow-based processes where there is weak coupling between composition changes, e.g. through (bio)chemical reactions, and convective mass transport in the system. Compartmental modelling is an important approach used to developed reduced-order models [@Chinesta2017] [@Benner2020] using a priori knowledge of process hydrodynamics [@Jourdan2019]. Compartmental modelling methods, such as those implemented in `OpenCCM`, enable simulations of these processes to be performed with far less computational complexity while still capturing the key aspects of their performance.
 
-`OpenCCM` integrates with two multiphysics simulation software packages, `OpenCMP` [@Monte2022] and `OpenFOAM` [@OpenFOAM], allowing for ease of transferring simulation data for compartmentalization. Additionally, it provides users with built-in functionality for calculating residence times, exporting to transfer data to simulation software, and for exporting results for visualization using `ParaView` [@Paraview]. Post-processing methods are included for mapping simulation results from compartment domains to the original simulation domain, useful for both visualization purposes and for further simulations in other software (e.g. multi-scale modelling).
+`OpenCCM` integrates with two multiphysics simulation software packages, `OpenCMP` [@Monte2022] and `OpenFOAM` [@greenshields2024], allowing for ease of transferring simulation data for compartmentalization. Additionally, it provides users with built-in functionality for calculating residence times, exporting to transfer data to simulation software, and for exporting results for visualization using `ParaView` [@Paraview]. Post-processing methods are included for mapping simulation results from compartment domains to the original simulation domain, useful for both visualization purposes and for further simulations in other software (e.g. multi-scale modelling).
 
 
 # Statement of Need
@@ -50,22 +50,27 @@ The overall aim of `OpenCCM` is to fill this need for an open-source compartment
 
 # Features
 
-| Feature                 | Description                                                                         |
+| **FEATURE**             | **DESCRIPTION**                                                                     |
 |-------------------------|-------------------------------------------------------------------------------------|
-| Model support           | Accepts `OpenCMP` [@Monte2022] and `OpenFOAM` [@OpenFOAM] results                   |
+| Model support           | Accepts `OpenCMP` [@Monte2022] and `OpenFOAM` [@greenshields2024] results           |
+|-------------------------| ------------------------------------------------------------------------------------- |
 | Compartmentalization    | Single-phase flow-based compartment identification                                  |
-| Compartmental Modelling | PFR-in-series-based model                                                           |
-|                         | Previous SotA CSTR-based models                                                     |
+|-------------------------| ------------------------------------------------------------------------------------- |
+| Compartmental Modelling | Plug Flow Reactors (PFRs)-in-series-based model                                     |
+|                         | Previous state-of-the-art Continous Stirred-tank reactor (CSTR)-based models        |
+|-------------------------| ------------------------------------------------------------------------------------- |
 | CM Simulations          | Linear, non-linear, and reversible arbitrary reactions.                             |
 |                         | 1st Order upwinding finite-difference-based                                         |
 |                         | Adaptive time-stepping                                                              |
+|-------------------------| ------------------------------------------------------------------------------------- |
 | Post-Processing         | Residence time distribution                                                         |
+|-------------------------| ------------------------------------------------------------------------------------- |
 | Output                  | Intermediary mesh format                                                            |
 |                         | Labeled compartments in `Paraview` format                                           |
 |                         | Concentrations from CM simulations in both `Paraview` and simulation package format |
+|-------------------------| ------------------------------------------------------------------------------------- |
 | Performance             | Multi-threading                                                                     |
 |                         | Caching of intermediary results to speed-up subsequent runs                         |
-
 
 # User Interface
 
@@ -88,9 +93,9 @@ The chemical reaction parser in `OpenCCM` reads and parses the reactions configu
 
 `aA + bB + [...] -> cC + dD + [...]`
 
-with associated numeric rate constants. It intentionally does not support the standard `<->` symbol for reversible chemical reactions, so that each independent reaction has an explicit rate constant clearly defined in the same file. Therefore, a reversible reaction must be written as two independent forward reactions (with separate rate constants). Each specie *label* must solely contain letter characters, e.g. `O` instead of `O2` for oxygen. Kinetic rate constants must be expressed as positive real numbers in standard or scientific notation. Additionally, each reaction/rate pair must also have a unique *identifier* (i.e. R1, R2). For example, take the reversible reaction,
+with associated numeric rate constants. It intentionally does not support the standard `<->` symbol for reversible chemical reactions, so that each independent reaction has an explicit rate constant clearly defined in the same file. Therefore, a reversible reaction must be written as two independent forward reactions (with separate rate constants). Each species *label* must solely contain letter characters, e.g. `O` instead of `O2` for oxygen. Kinetic rate constants must be expressed as positive real numbers in standard or scientific notation. Additionally, each reaction/rate pair must also have a unique *identifier* (i.e. R1, R2). For example, take the reversible reaction,
 
-$$2NaCl + CaCO3 <-> Na2CO3 + CaCl2$$
+$$2\textrm{NaCl} + \textrm{CaCO}_3 \Leftrightarrow \textrm{Na}_2\textrm{CO}_3 + \textrm{CaCl}_2$$
 
 with `k_f = 5e-2` and `k_r = 2` the species must first be redefined in simple terms in agreement with the reactions parser, i.e. a = NaCl, b = CaCO3, c = Na2CO3, and d = CaCl2. A configuration file for this reversible reaction may then be:
 
@@ -130,7 +135,7 @@ The Residence Time Distribution (RTD) curve for both the CFD and Compartmental M
 
 Finally, to demonstrate how to use the reaction system we will implement the reversible reaction system mentioned above:
 
-$$2NaCl + CaCO3 <-> Na2CO3 + CaCl2$$
+$$2\textrm{NaCl} + \textrm{CaCO}_3 \Leftrightarrow \textrm{Na}_2\textrm{CO}_3 + \textrm{CaCl}_2$$
 
 with `k_f = 5e-2` and `k_r = 2` with a = NaCl, b = CaCO3, c = Na2CO3, and d = CaCl2. The initial conditions are 0 for all species and the boundary conditions at the inlet are `[NaCl] = [CaCO3] = 1` and `[Na2CO3] = [CaCl2] = 0`. The equations and conditions have already been specified, enable the reactions by uncommenting the `;reactions_file_path = reactions` line by removing the ';' at the start of the line. Note that when you re-run the compartmentalization it will finish much faster than the first time, this is because the compartmental model does not have to be re-created, instead it is loaded from disk.
 
