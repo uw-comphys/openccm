@@ -95,9 +95,9 @@ $$2NaCl + CaCO3 <-> Na2CO3 + CaCl2$$
 with `k_f = 5e-2` and `k_r = 2` the species must first be redefined in simple terms in agreement with the reactions parser, i.e. a = NaCl, b = CaCO3, c = Na2CO3, and d = CaCl2. A configuration file for this reversible reaction may then be:
 
     [REACTIONS]
-    R1: 2a + b -> c + d
-    R2: c + d -> 2a + b
-
+    R1: 2NaCl   + CaCO3 ->  Na2CO3 + CaCl2
+    R2:  Na2CO3 + CaCl2 -> 2NaCl   + CaCO3
+    
     [RATES]
     R1: 5e-2
     R2: 2
@@ -145,8 +145,8 @@ where `x` is the number of moles produced of each product.
 
 The expected equilibrium concentrations for the four species are: `[NaCl]_{ss} = 0.7706`, `[CaCO3] = 0.8853`, `[Na2CO3] = 0.1147`, and `[CaCl2] = 0.1147`. Based on the figures below, and from opening up the results, it can be seen that these steady state values are obtained at the outlet of the reactor.
 
-![Input/Output Concentrations for 'a'.](images/system_response_a.pdf){ width=49% } ![Input/Output Concentrations for 'b'.](images/system_response_b.pdf){ width=49% }
-![Input/Output Concentrations for 'c'.](images/system_response_c.pdf){ width=49% } ![Input/Output Concentrations for 'd'.](images/system_response_d.pdf){ width=49% }
+![Input/Output Concentrations for 'NaCl'.](images/system_response_a.pdf){ width=49% } ![Input/Output Concentrations for 'CaCO3'.](images/system_response_b.pdf){ width=49% }
+![Input/Output Concentrations for 'Na2CO3'.](images/system_response_c.pdf){ width=49% } ![Input/Output Concentrations for 'CaCl2'.](images/system_response_d.pdf){ width=49% }
 
 To output the `ParaView` visualizations, change `output_VTK` to `True` in the `CONFIG` file and re-run the simulation.
 
