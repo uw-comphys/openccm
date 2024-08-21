@@ -124,7 +124,7 @@ That network of compartments is further processed as each compartment is represe
 
 The Residence Time Distribution (RTD) curve for both the CFD and Compartmental Model (CM) are calculated using the script in the supplementary material of [@Vasile2024].
 
-![Residence time distribution curves for both CFD and CM simulations.](images/e(t)_for_cfd_vs_pfr.pdf){ width=60% }
+![Residence time distribution curves for CFD and CM simulations.](images/cfd_vs_pfr_vs_cstr){ width=60% }
 
 ## Reactions
 
