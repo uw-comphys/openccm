@@ -31,9 +31,9 @@ OPENFOAM_SCALAR_HEADER = """/*--------------------------------*- C++ -*---------
   =========                 |
   \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
    \\\\    /   O peration     | Website:  https://openfoam.org
-    \\\\  /    A nd           | Version:  10
+    \\\\  /    A nd           | Version:  12
      \\\\/     M anipulation  |
-\*---------------------------------------------------------------------------*/
+\\*---------------------------------------------------------------------------*/
 FoamFile
 {{
     format      ascii;

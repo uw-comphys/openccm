@@ -89,6 +89,8 @@ def create_boundary_conditions(c0:                  np.array,
         "from math import *\n",
         "from numba import njit\n",
         "from numpy import array, ndarray\n",
+        "\n"
+        "import numpy as np"
         "\n",
         "\n",
     ]
@@ -160,7 +162,6 @@ def create_boundary_conditions(c0:                  np.array,
         for specie_name, bc_eqn_str in bc_dict[grouped_bcs.id(bc_name)].items():
             bc_file_lines.append(BC_TEMPLATE.format(f"{bc_name}_{specie_name}", str(bc_eqn_str)))
             bc_file_lines.append("\n\n")
-            bc_file_lines.append("\n")
 
     # Hand unroll the loop to apply the BCs
     bc_file_lines.append("@njit(inline='always')  # Do not cache, _ddt will be a large matrix\n")

@@ -476,8 +476,8 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
     print(f"Merged {num_merged} compartments")
 
     percent_merged = 100. * num_merged / num_pre_merge
-    if percent_merged > 50:
-        print(f"WARNING: Merged {percent_merged:.4f}% compartments. "
+    if percent_merged > 80:
+        print(f"WARNING: Merged {percent_merged:.1f}% compartments. "
               f"Compartmentalization and/or merging tolerances may have been misspecified.")
 
     print("Done merging compartments")
@@ -503,12 +503,12 @@ def find_best_merge_target(id_to_merge, connections, compartment_avg_directions)
     # 1. Filter search, if possible, to compartments downstream of id_to_merge
     downstream_connection_ids = []
     for connection, compartment in connections.items():
-        if connection < 0 and compartment > 0:
+        if connection < 0 and compartment >= 0:  # Positive connections are upstream, negative compartments are boundaries
             downstream_connection_ids.append(connection)
     if len(downstream_connection_ids) > 0:
         id_neighbour_compartment = [connections[i_connection] for i_connection in downstream_connection_ids]
     else:
-        id_neighbour_compartment = list(filter(lambda compartment: compartment > 0, connections.values()))
+        id_neighbour_compartment = list(filter(lambda compartment: compartment >= 0, connections.values()))
         print(f"No downstream compartments for {id_to_merge}, merging upstream.")
 
     # 2. Pick the ones with the closest average direction vector
@@ -620,7 +620,7 @@ def _calculate_compartments(elements_not_in_a_compartment:  Set[int],
                 # 3. Compare the alignment of the seed element to that of all the neighbours
                 ############################################################################################################
                 # Calculate the dot product
-                angle_result = np.arccos(director_neighbours.dot(director_seed)) * 180/np.pi
+                angle_result = np.arccos(np.round(director_neighbours.dot(director_seed), 4)) * 180 / np.pi
 
                 # Compare the dot product to the tolerance
                 check = angle_result <= angle_threshold
