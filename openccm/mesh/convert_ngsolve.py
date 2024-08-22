@@ -15,6 +15,10 @@
 # <https://www.gnu.org/licenses/>.                                                                                     #
 ########################################################################################################################
 
+r"""
+Functions required for converting an NGSolve mesh object into a CMesh object.
+"""
+
 from typing import Dict, List, Tuple, Callable
 
 import numpy as np
@@ -25,14 +29,16 @@ from ..config_functions import ConfigParser
 
 def convert_mesh_ngsolve(config_parser: ConfigParser, mesh: 'ngsolve.Mesh') -> CMesh:
     """
-    Convert the NGSolve mesh into OpenCCM's internal format.
+    Main function for converting the NGSolve mesh object into a CMesh object.
 
-    Args:
-        config_parser:  The OpenCCM ConfigParser
-        mesh:           The NGSolve mesh to re-represent in a common format
+    Parameters
+    ----------
+    * config_parser:  The OpenCCM ConfigParser.
+    * mesh:           The NGSolve mesh to convert into a CMesh.
 
-    Returns:
-        cmesh: The internal CMesh representation of the NGsolve mesh.
+    Returns
+    -------
+    * cmesh: The internal CMesh representation of the NGsolve mesh.
     """
     print("Converting Mesh")
     from ngsolve import Integrate, CoefficientFunction
@@ -72,15 +78,17 @@ def _create_bc_mappings(mesh: 'ngsolve.Mesh', grouped_bcs: GroupedBCs) -> Tuple[
     All BCs which represent a no-flux BC, either explicitly in terms of the flux or with a Dirichlet condition, are
     grouped together into the same BC since they will not be treated as an inlet/outlet.
 
-    Args:
-        mesh:           The NGSolve mesh containing the compartments.
-        grouped_bcs:    Helper class which handles the internal numbering of the BCs for the CMesh.
+    Parameters
+    ----------
+    * mesh:           The NGSolve mesh containing the compartments.
+    * grouped_bcs:    Helper class which handles the internal numbering of the BCs for the CMesh.
 
-    Returns:
-        facet_to_bc_map: A dictionary mapping each facet to a BC index.
-                            * 0 for a non-bc facet
-                            * grouped_bcs.id(bc_name) for everything else.
-        bc_to_facet_map: A dictionary mapping each BC NAME to the facets that make it up.
+    Returns
+    -------
+    * facet_to_bc_map:  A dictionary mapping each facet to a BC index.
+                        * 0 for a non-bc facet
+                        * grouped_bcs.id(bc_name) for everything else.
+    * bc_to_facet_map:  A dictionary mapping each BC NAME to the facets that make it up.
     """
     from ngsolve import CoefficientFunction, FacetFESpace, GridFunction
 
@@ -114,8 +122,17 @@ def _create_bc_mappings(mesh: 'ngsolve.Mesh', grouped_bcs: GroupedBCs) -> Tuple[
 
 def _create_element_connectivity(mesh: 'ngsolve.Mesh', all_elements: Tuple['ngsolve.comp.Ngs_Element']) -> Tuple[Tuple[int, ...], ...]:
     """
-    Returns:
-        neighbours_all: A tuple of the IDs of all neighbouring elements of a given element ID, indexed by that ID.
+    Calculate the connectivity of `mesh`'s elements.
+    Two elements are considered connected, i.e. neighbours, if they share a facet.
+
+    Parameters
+    ----------
+    * mesh:         The NGSolve mesh.
+    * all_elements: A tuple of all NGSolve element objects from `mesh`.
+
+    Returns
+    -------
+    * neighbours_all: The neighbours of each element, indexed by its ID.
     """
     neighbours_all: List[Tuple[int], ...] = []
 
@@ -137,8 +154,16 @@ def _create_element_connectivity(mesh: 'ngsolve.Mesh', all_elements: Tuple['ngso
 
 def _create_facet_connectivity(mesh: 'ngsolve.Mesh') -> Tuple[Tuple[int, ...], ...]:
     """
-    Returns:
-        neighbours_all: A tuple of the IDs of all neighbouring facets of a given facet ID, indexed by that ID.
+    Calculate the connectivity of `mesh`'s facets.
+    Two facets are considered connected, i.e. neighbours, if they share a vertex.
+
+    Parameters
+    ----------
+    * mesh: The NGSolve mesh.
+
+    Returns
+    -------
+    * neighbours_all: The neighbouring facets of each facet, indexed by its ID.
     """
     neighbours_all: Dict[int, Tuple[int, ...]] = dict()
 

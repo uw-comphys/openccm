@@ -97,7 +97,7 @@ def run(config_parser_or_file: Union[ConfigParser, str]) -> Dict[str, int]:
         with open(cache_info.name_cmesh, 'rb') as handle:
             c_mesh: CMesh = pickle.load(handle)
     else:
-        c_mesh = convert_mesh(OpenCMP, config_parser, mesh=mesh if OpenCMP else None)
+        c_mesh = convert_mesh(config_parser, ngsolve_mesh=mesh if OpenCMP else None)
         with open(cache_info.name_cmesh, 'wb') as handle:
             pickle.dump(c_mesh, handle, protocol=pickle.HIGHEST_PROTOCOL)
     timing_dict['Create CMesh'] = perf_counter_ns() - start
