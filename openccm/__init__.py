@@ -15,5 +15,10 @@
 # <https://www.gnu.org/licenses/>.                                                                                     #
 ########################################################################################################################
 
+
+r"""
+.. include:: ../README.md
+"""
+
 from .config_functions import ConfigParser
 from .run import run
