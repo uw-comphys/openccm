@@ -182,7 +182,7 @@ def visualize_model_network(model_network:  Tuple[
 
     Args:
         model_network:  The network of reactors (current PFRs/CSTRs) to visualize.
-                        See compartments_to_pfrs or compartments_to_cstrs for an in-depth description.
+                        See _compartments_to_pfrs or compartments_to_cstrs for an in-depth description.
         compartments:   The compartments that were converted into the model network.
                         See calculate_compartments for an in-depth description.
         mesh:           The OpenCCM mesh used to generate the reactor network.

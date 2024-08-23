@@ -14,6 +14,11 @@
 # You should have received a copy of the GNU Lesser General Public License along with OpenCCM. If not, see             #
 # <https://www.gnu.org/licenses/>.                                                                                     #
 ########################################################################################################################
+
+r"""
+Functions related to creating a network of PFRs out of a network of compartments.
+"""
+
 from collections import Counter
 from copy import deepcopy
 from typing import Dict, List, Set, Tuple
@@ -44,40 +49,41 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
     The PFRs will be created so that while each many have more than one inlet/outlet, all inlets are at the start of
     the PRF and all outlets are at the end.
 
-    Args:
-        compartments:           A dictionary representation of the elements in the compartments.
-                                Keys are compartment IDs, values are sets containing the indices
-                                of the elements in the compartment.
-        compartment_network:    A dictionary representation of the compartments in the network.
-                                Keys are compartment IDs, and whose values are dictionary.
-                                    For each of those dictionaries, the keys are the index of a neighboring compartment
-                                    and the values are another dictionary.
-                                        For each of those dictionaries, the keys are the index of the bounding entity
-                                        between the two compartments, and the values Tuples.
-                                            - The 1st is the index of the element upwind of that boundary facet.
-                                            - The 2nd is the outward facing unit normal for that boundary facet.
-        mesh:                   The mesh containing the compartments.
-        flows_and_upwind:       2D object array indexed by facet ID.
-                                - 1st column is volumetric flowrate through facet.
-                                - 2nd column is a flag indicating which of a facet's elements are upwind of it.
-                                    - 0, and 1 represent the index into mesh.facet_elements[facet]
-                                    - -1 is used for boundary elements to represent
-        dir_vec:                Numpy array of direction vectors, row i is for element i.
-        config_parser:          The OpenCCM ConfigParser
+    Parameters
+    ----------
+    * compartments:         A dictionary representation of the elements in the compartments.
+                            Keys are compartment IDs, values are sets containing the indices
+                            of the elements in the compartment.
+    * compartment_network:  A dictionary representation of the compartments in the network.
+                            Keys are compartment IDs, and whose values are dictionary.
+                            - For each of those dictionaries, the keys are the index of a neighboring compartment
+                              and the values are another dictionary.
+                                - For each of those dictionaries, the keys are the index of the bounding entity
+                                  between the two compartments, and the values Tuples.
+                                    - The 1st is the index of the element upwind of that boundary facet.
+                                    - The 2nd is the outward facing unit normal for that boundary facet.
+    * mesh:                 The mesh containing the compartments.
+    * flows_and_upwind:     2D object array indexed by facet ID.
+                            - 1st column is volumetric flowrate through facet.
+                            - 2nd column is a flag indicating which of a facet's elements are upwind of it.
+                                - 0, and 1 represent the index into mesh.facet_elements[facet]
+                                - -1 is used for boundary elements to represent
+    * dir_vec:              Numpy array of direction vectors, row i is for element i.
+    * config_parser:        The OpenCCM ConfigParser
 
-    Returns:
-        ~: A tuple containing, in order:
-        1. connections:             A dictionary representing the PFR network.
-                                    The keys are the IDs of each PFR, the values are tuples of two dictionaries.
-                                        - The first dictionary is for the inlet(s) of the PFR.
-                                        - The second dictionary is for the outlet(s) of the PFR.
-                                    For both dictionaries, the key is the connection ID
-                                    and the value is the ID of the PFR on the other end of the connection.
-        2. volumes:                 A numpy array of the volume of each PFR indexed by its ID.
-        3. volumetric_flows:        A numpy array of the volumetric flowrate through each connection indexed by its ID.
-        4. compartment_to_pfr_map:  A map between a compartment ID and the PFR IDs of all PFRs in it.
-                                    The PFR IDs are stored in the order in which they appear
-                                    (i.e. the most upstream PFR is first, and the most downstream PFR is last).
+    Returns
+    -------
+    1. connections:             A dictionary representing the PFR network.
+                                The keys are the IDs of each PFR, the values are tuples of two dictionaries.
+                                - The first dictionary is for the inlet(s) of the PFR.
+                                - The second dictionary is for the outlet(s) of the PFR.
+                                For both dictionaries, the key is the connection ID
+                                and the value is the ID of the PFR on the other end of the connection.
+    2. volumes:                 A numpy array of the volume of each PFR indexed by its ID.
+    3. volumetric_flows:        A numpy array of the volumetric flowrate through each connection indexed by its ID.
+    4. compartment_to_pfr_map:  A map between a compartment ID and the PFR IDs of all PFRs in it.
+                                The PFR IDs are stored in the order in which they appear
+                                (i.e. the most upstream PFR is first, and the most downstream PFR is last).
     """
     print("Creating PFR network")
 
@@ -131,8 +137,8 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
     ####################################################################################################################
     # 2. Split compartment into PFRs
     ####################################################################################################################
-    output = compartments_to_pfrs(connection_locations, connection_pairing, volumes_compartments, _volumetric_flows,
-                                  len(compartment_network.keys())+1, id_next_connection)
+    output = _compartments_to_pfrs(connection_locations, connection_pairing, volumes_compartments, _volumetric_flows,
+                                   len(compartment_network.keys()) + 1, id_next_connection)
     _volumes, _volumetric_flows, all_connection_pairing, compartment_to_pfr_map  = output
 
     ####################################################################################################################
@@ -200,12 +206,12 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
     return connections, volumes, volumetric_flows, compartment_to_pfr_map
 
 
-def compartments_to_pfrs(connection_locations:      Dict[int, List[Tuple[float, List[int]]]],
-                         all_connection_pairing:    Dict[int, Dict[int, int]],
-                         volumes_compartments:      Dict[int, float],
-                         volumetric_flows:          Dict[int, float],
-                         id_of_next_pfr:            int,
-                         id_of_next_connection:     int) \
+def _compartments_to_pfrs(connection_locations:      Dict[int, List[Tuple[float, List[int]]]],
+                          all_connection_pairing:    Dict[int, Dict[int, int]],
+                          volumes_compartments:      Dict[int, float],
+                          volumetric_flows:          Dict[int, float],
+                          id_of_next_pfr:            int,
+                          id_of_next_connection:     int) \
         -> Tuple[
             Dict[int, float],
             Dict[int, float],
@@ -217,23 +223,25 @@ def compartments_to_pfrs(connection_locations:      Dict[int, List[Tuple[float, 
 
     This function assumes that the compartments are numbered sequentially [0, N) without any gaps.
 
-    Args:
-        connection_locations:       Dictionary to lookup locations of inlets/outlets for a compartment.
-                                    For a  detailed description see the documentation in method_name.
-        all_connection_pairing:     Dictionary for looking up connectivity of a compartment.
-                                    For a detailed description see the documentation in create_pfr_network.
-        volumes_compartments:       Volume of each compartment, lookup using compartment ID
-        volumetric_flows:           Volumetric flowrate through each connection, lookup using connection ID.
-        id_of_next_pfr:             ID to use for the next PFR to be made.
-        id_of_next_connection:      ID to use for the next connection if one needs to be made.
-                                    This value is used to ensure that each connection has a unique ID.
+    Parameters
+    ----------
+    * connection_locations:     Dictionary to lookup locations of inlets/outlets for a compartment.
+                                For a detailed description see the documentation in method_name.
+    * all_connection_pairing:   Dictionary for looking up connectivity of a compartment.
+                                For a detailed description see the documentation in create_pfr_network.
+    * volumes_compartments:     Volume of each compartment, indexed by compartment ID.
+    * volumetric_flows:         Volumetric flowrate through each connection, lookup using connection ID.
+    * id_of_next_pfr:           ID to use for the next PFR to be made.
+    * id_of_next_connection:    ID to use for the next connection if one needs to be made.
+                                This value is used to ensure that each connection has a unique ID.
 
-    Returns:
-        volumes_pfr:                Volume of each PFR, lookup using PFR ID.
-        volumetric_flows:           Flows through each compartment, updated with all new flows
-        all_connection_pairing:     Same as input, but now updated to contain the pairings between PFRs rather than
-                                    between compartments
-        compartment_to_pfr_map:     A Mapping between PFR ID and the
+    Returns
+    -------
+    1. volumes_pfr:             Volume of each PFR, lookup using PFR ID.
+    2. volumetric_flows:        Flows through each compartment, updated with all new flows
+    3. all_connection_pairing:  Same as input, but now updated to contain the pairings between PFRs rather than
+                                between compartments
+    4. compartment_to_pfr_map:  A Mapping between PFR ID and the
     """
     volumes_pfr: Dict[int, float] = dict()
     compartment_to_pfr_map: Dict[int, List[int]] = dict()
@@ -453,28 +461,31 @@ def _merge_connections(inlets_and_outlets:      List[Tuple[float, int]],
     1. At 0% or 100%, if-and-only-if one of the inlets/outlets to be merged is the first inlet (or last outlet).
     2. Weighted average (using volumetric flowrate) of all locations to merge.
 
-    Args:
-        inlets_and_outlets:         List of tuples containing the pre-merging inlets/outlets and their position.
-                                    Each tuple has two values, first is a float and the second is an integer.
-                                    <p>
-                                    - The float represents the position along the length of the compartment of this inlet/outlet.
-                                      From 0.0 to 1.0 (inclusive of both ends).
-                                    <p>
-                                    - The integer represents the ID of this inlet/outlet.
-                                      A positive value signifies an inlet and a negative value signifies and outlet.
-        volumetric_flows:           Dictionary to look up the flowrate through each connection by its ID
-        dist_threshold:             The maximum distance between any two points in a merge connection location
-        compartment_connections:    Dictionary mapping the connection IDs for a compartment
-                                    to the compartment on the other side.
-        atol_opt:                   Absolute tolerate used for conservation of mass.
-    Returns:
-        List of tuples representing the merged inlet/outlets of the compartment
+    Parameters
+    ----------
+    * inlets_and_outlets:       List of tuples containing the pre-merging inlets/outlets and their position.
+                                Each tuple has two values, first is a float and the second is an integer.
+                                <p>
+                                - The float represents the position along the length of the compartment of this inlet/outlet.
+                                  From 0.0 to 1.0 (inclusive of both ends).
+                                <p>
+                                - The integer represents the ID of this inlet/outlet.
+                                  A positive value signifies an inlet and a negative value signifies and outlet.
+    * volumetric_flows:         Dictionary to look up the flowrate through each connection by its ID
+    * dist_threshold:           The maximum distance between any two points in a merge connection location
+    * compartment_connections:  Dictionary mapping the connection IDs for a compartment
+                                to the compartment on the other side.
+    * atol_opt:                 Absolute tolerate used for conservation of mass.
+
+    Returns
+    -------
+    * connections_merged: A copy of the `inlets_and_outlets` but with any required merging performed.
     """
-    lst_return: List[Tuple[float, List[int]]] = []
-    flows_in:    List[float] = []
-    flows_out:   List[float] = []
-    flows_intra: List[float] = []
-    inlets_and_outlets = inlets_and_outlets.copy()
+    connections_merged: List[Tuple[float, List[int]]]   = []
+    flows_in:           List[float]                     = []
+    flows_out:          List[float]                     = []
+    flows_intra:        List[float]                     = []
+    inlets_and_outlets                                  = inlets_and_outlets.copy()
 
     # Ensure that the first and last connections are of the correct types and in the correct locations
     assert inlets_and_outlets[0][0] == 0.0
@@ -597,16 +608,16 @@ def _merge_connections(inlets_and_outlets:      List[Tuple[float, int]],
             position_merged /= volumetric_sum
 
         # Save all inlets/outlets at their new locations
-        lst_return.append((position_merged, ids))
+        connections_merged.append((position_merged, ids))
         i += 1
 
     # The first entry must be an inlet (inlets are represented by a positive connection ID)
-    assert np.all([id_connection > 0 for id_connection in lst_return[0][1]])
+    assert np.all([id_connection > 0 for id_connection in connections_merged[0][1]])
     # The last entry must be an outlet (outlets are represented by a negative connection ID)
-    assert np.all([id_connection < 0 for id_connection in lst_return[-1][1]])
+    assert np.all([id_connection < 0 for id_connection in connections_merged[-1][1]])
 
     # A domain BC should not have been merged into any of the locations:
-    for _, connections in lst_return:
+    for _, connections in connections_merged:
         other_side = np.array([compartment_connections[connection] for connection in connections])
         assert np.all(other_side < 0) or np.all(other_side >= 0)
 
@@ -629,7 +640,7 @@ def _merge_connections(inlets_and_outlets:      List[Tuple[float, int]],
             # Check that the flow from this PFR [i-1, i] into the next PFR [i, i+1] is positive
             assert flows_intra[i] > 0
 
-    return lst_return
+    return connections_merged
 
 
 def _fix_connection_ordering(inlets_and_outlets:    List[Tuple[float, int]],
@@ -651,14 +662,17 @@ def _fix_connection_ordering(inlets_and_outlets:    List[Tuple[float, int]],
     downstream inlets as are required to prevent the reversal.
     The outlets are not moved.
 
-    Args:
-        inlets_and_outlets: The ordered list of inlets and outlets.
-        volumetric_flows:   The volumetric flow through each connection, indexed by connection ID.
-        id_compartment:     The ID of the compartment whose inlets & outlets are being fixed.
-                            Used only for logging purposes.
-        atol_opt:           Absolute tolerate used for conservation of mass.
-    Returns:
-        inlets_and_outlets: The re-ordered list of inlets and outlets
+    Parameters
+    ----------
+    * inlets_and_outlets: The ordered list of inlets and outlets.
+    * volumetric_flows:   The volumetric flow through each connection, indexed by connection ID.
+    * id_compartment:     The ID of the compartment whose inlets & outlets are being fixed.
+                          Used only for logging purposes.
+    * atol_opt:           Absolute tolerate used for conservation of mass.
+
+    Returns
+    -------
+    * inlets_and_outlets: The re-ordered list of inlets and outlets
     """
 
     # Fix the first inlet
@@ -792,12 +806,14 @@ def _fix_domain_boundary_connection_ordering(inlets_and_outlets:        List[Tup
     This is done by moving the connections to domain inlets/outlets to the correct end of the compartment without changing
     the relative ordering of the other connections.
 
-    Args:
-        inlets_and_outlets:         The ordered list of inlets and outlets.
-        compartment_connections:    Dictionary for this compartment between the connection ID and compartment on other side.
+    Parameters
+    ----------
+    * inlets_and_outlets:       The ordered list of inlets and outlets.
+    * compartment_connections:  Dictionary for this compartment between the connection ID and compartment on other side.
 
-    Returns:
-        inlets_and_outlets: The re-ordered list of inlets and outlets
+    Returns
+    -------
+    * inlets_and_outlets: The re-ordered list of inlets and outlets
     """
     counter = Counter(compartment_connections.values())
     if min(counter) < 0:
@@ -886,54 +902,58 @@ def connect_pfr_compartments(compartment_network:   Dict[int, Dict[int, Dict[int
                  Dict[int, Set[int]],
                  Dict[int, float]]:
     """
-    Function to take a compartment network and compartments and create the connections between them.
-    Calculates the flowrates and direction of flow between connected compartments.
-    CAN RETURN MULTIPLE CONNECTIONS BETWEEN TWO COMPARTMENTS.
+    Convert a network of compartments connected by facets into a network of compartments connected by labeled connections.
+    Each connection representing multiple facets and having an ID and flowrate associated with it.
+
+    This function can return a network with multiple connections between two compartments.
 
     A surface shared by two compartments is made up of facets, all facets below the specified threshold
-    (flow_threshold_i) are removed from the surface.
+    `flow_threshold_facet` are removed from the surface.
     Then the surface is split into contiguous subsurfaces which all have the same direction of flow.
+    Any subsurface which has a flow rate below `flow_threshold` is removed.
     Each subsurface is treated as a separate connection between the two compartments that it's between.
 
-    Args:
-        compartment_network:    A dictionary representation of the compartments in the network.
-                                Keys are compartment IDs, and whose values are dictionary.
-                                    For each of those dictionaries, the keys are the index of a neighboring compartment
-                                    and the values are another dictionary.
-                                        For each of those dictionaries, the keys are the index of the bounding facet
-                                        between the two compartments, and the values Tuples.
-                                            - The 1st is the index of the element upwind of that boundary facet.
-                                            - The 2nd is the outward facing unit normal for that boundary facet.
-        compartments:           A dictionary representation of the elements in the compartments.
-                                Keys are compartment IDs, values are sets containing the indices
-                                of the elements in the compartment.
-        mesh:                   The mesh the problem was solved on.
-        dir_vec:                Numpy array of direction vectors, row i is for element i.
-        flows_and_upwind:       2D object array indexed by facet ID.
-                                - 1st column is volumetric flowrate through facet.
-                                - 2nd column is a flag indicating which of a facet's elements are upwind of it.
-                                    - 0, and 1 represent the index into mesh.facet_elements[facet]
-                                    - -1 is used for boundary elements to represent
-        final:                  If asserts and all calculations should be performed.
-                                This is set to False when function is called from merge_compartments since some may
-                                be too small for the invariants to be true.
-        config_parser:          The OpenCCM ConfigParser
+    Parameters
+    ----------
+    * compartment_network:  A dictionary representation of the compartments in the network.
+                            Keys are compartment IDs, and whose values are dictionary.
+                                For each of those dictionaries, the keys are the index of a neighboring compartment
+                                and the values are another dictionary.
+                                    For each of those dictionaries, the keys are the index of the bounding facet
+                                    between the two compartments, and the values Tuples.
+                                        - The 1st is the index of the element upwind of that boundary facet.
+                                        - The 2nd is the outward facing unit normal for that boundary facet.
+    * compartments:         A dictionary representation of the elements in the compartments.
+                            Keys are compartment IDs, values are sets containing the indices
+                            of the elements in the compartment.
+    * mesh:                 The mesh the problem was solved on.
+    * dir_vec:              Numpy array of direction vectors, row i is for element i.
+    * flows_and_upwind:     2D object array indexed by facet ID.
+                            - 1st column is volumetric flowrate through facet.
+                            - 2nd column is a flag indicating which of a facet's elements are upwind of it.
+                                - 0, and 1 represent the index into mesh.facet_elements[facet]
+                                - -1 is used for boundary elements to represent
+    * final:                If asserts and all calculations should be performed.
+                            This is set to False when function is called from merge_compartments since some may
+                            be too small for the invariants to be true.
+    * config_parser:        The OpenCCM ConfigParser
 
-    Returns:
-        Tuple of two values:
-            id_next_connection:     The integer to use for the next connection ID.
-            connection_distances:   Dictionary storing the distance.
-            connection_pairing:     Dictionary storing info about which other compartments a given compartment is connected to.
-                                        - First key is compartment ID
-                                        - Values is a Dict[int, int]
-                                            - Key is connection ID (positive inlet into this compartment, negative is outlet)
-                                            - Value is the ID of the compartment on the other side
-            compartment_network:    The compartment network passed in.
-            compartments            The compartments passed in.
-            volumetric_flows:       Dictionary of the magnitude of volumetric flow through each connection,
-                                    indexed by connection ID.
-                                    Connection ID in this dictionary is ALWAYS positive, need to take absolute sign of
-                                    the value if it's negative (see `connection_pairing` docstring).
+    Returns
+    -------
+    1. id_next_connection:      The integer to use for the next connection ID.
+    2. connection_distances:    Dictionary storing the distance.
+    3. connection_pairing:      Dictionary storing info about which other compartments a given compartment is connected to.
+                                - First key is compartment ID
+                                - Values is a Dict[int, int]
+                                    - Key is connection ID (positive inlet into this compartment, negative is outlet)
+                                    - Value is the ID of the compartment on the other side
+    4. compartment_network:     The compartment network passed in.
+    5. compartments             The compartments passed in.
+    6. volumetric_flows:        Dictionary of the magnitude of volumetric flow through each connection,
+                                indexed by connection ID.
+                                Connection ID in this dictionary is ALWAYS positive, ensure index using
+                                `volumetric_flows[abs(ID)]` if the connection ID is negative
+                                (see `connection_pairing` docstring).
     """
     print("Finding connections between compartments")
 
@@ -1134,13 +1154,14 @@ def _group_facets_into_surfaces(facets: Set[int], mesh: CMesh) -> List[List[int]
     The creation of this connectivity is handled by the creation of the CMesh.
     This function queries the CMesh for which facet(s) a given facet is connected it.
 
-    Args:
-        facets: The set of facets to group.
-        mesh:   The CMesh on which the facets below. Used to get their connectivity.
+    Parameters
+    ----------
+    * facets: The set of facets to group.
+    * mesh:   The CMesh on which the facets below. Used to get their connectivity.
 
-    Returns:
-        surfaces:   A list of contiguous surfaces, each represented as a list of facet IDs.
-
+    Returns
+    -------
+    * surfaces:   A list of contiguous surfaces, each represented as a list of facet IDs.
     """
     surfaces: List[List[int]] = []
 

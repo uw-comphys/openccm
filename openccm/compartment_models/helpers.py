@@ -14,6 +14,11 @@
 # You should have received a copy of the GNU Lesser General Public License along with OpenCCM. If not, see             #
 # <https://www.gnu.org/licenses/>.                                                                                     #
 ########################################################################################################################
+
+r"""
+Helper functions common to both CSTR- and PFR-based networks.
+"""
+
 from typing import Dict, Set, Tuple
 
 import numpy as np
@@ -29,12 +34,13 @@ def check_network_for_disconnected_subgraphs(connection_pairings: Dict[int, Dict
 
     Throws a ValueError if there are disconnected subgraphs.
 
-    Args:
-        connection_pairings:    Mapping between compartment ID and it's neighbours.
-                                Each entry is another mapping between the connection ID and the neibhour ID.
-
-    Returns:
-          ~: None.
+    Parameters
+    ----------
+    * connection_pairings:  Mapping between compartment ID and its neighbours.
+                            Each entry is another mapping between the connection ID and the neighbour ID.
+    Returns
+    -------
+    * Nothing, will through an error if there are disconnected subgraphs.
     """
     uncolored_nodes = set(connection_pairings.keys())
     num_subgraphs = 0
@@ -66,62 +72,67 @@ def tweak_compartment_flows(
     - This method works balances the mass around each COMPARTMENT, that one balances the mass around each CSTR/PFR.
     - That method tries to minimize the error in the conservation of mass, accepting small deviations resulting in either
       a small net inflow or outflow.
-      This method accepts looser tolerances in order to ensure there is NEVER a net outflow.
+    - This method accepts looser tolerances in order to ensure there is NEVER a net outflow.
       This is requirement is needed by the Compartment -> PFR method, having even a small net outflow will result in the
       intra-compartment connections that get made to cause a reversal of flow.
 
     The first mass balance inequality written around each PFR is to ensure that there is a small netflow (epsilon)
     To ensure it's positive even after any small floating point precision issues.
-    Σ_inlets (Q + x) - Σ_outlets(Q + x) >= eps
-    (ΣQ_in - ΣQ_out) + (Σx_in - Σx_out) >= eps
-    (ΣQ_in - ΣQ_out)                    >= eps  - (Σx_in - Σx_out)
-    (-Σx_in + Σx_out)                   <= -eps + (ΣQ_in - ΣQ_out)
+
+        Σ_inlets (Q + x) - Σ_outlets(Q + x) >= eps
+        (ΣQ_in - ΣQ_out) + (Σx_in - Σx_out) >= eps
+        (ΣQ_in - ΣQ_out)                    >= eps  - (Σx_in - Σx_out)
+        (-Σx_in + Σx_out)                   <= -eps + (ΣQ_in - ΣQ_out)
 
     The second mass balance inequality is to put an upper bound on the net flow into the compartment
-    Σ_inlets (Q + x) - Σ_outlets(Q + x) <= atol_opt
-    (ΣQ_in - ΣQ_out) + (Σx_in - Σx_out) <= atol_opt
-    (Σx_in - Σx_out)                    <= atol_opt - (ΣQ_in - ΣQ_out)
+
+        Σ_inlets (Q + x) - Σ_outlets(Q + x) <= atol_opt
+        (ΣQ_in - ΣQ_out) + (Σx_in - Σx_out) <= atol_opt
+        (Σx_in - Σx_out)                    <= atol_opt - (ΣQ_in - ΣQ_out)
 
     Where:
-        - Q is the current flowrate through a connection
-        - x is the non-negative adjustment to a given connection
-        - eps is a small value used to avoid floating point issues when calculating the net flow.
-        - atol_opt is the absolute tolerance for the conservation of mass, the maximum allowable net inflow.
+    - Q is the current flowrate through a connection
+    - x is the non-negative adjustment to a given connection
+    - eps is a small value used to avoid floating point issues when calculating the net flow.
+    - atol_opt is the absolute tolerance for the conservation of mass, the maximum allowable net inflow.
 
     The system being solved is:
+
         minimize:   x_vec
         st:         A x_vec <= Σ (Q_in - Q_out)
                     x_vec >= 0
 
     The right hand side of the inequality is the net flow into a compartment
-        =0 : mass is balanced
-        >0 : net inflow into compartment
-        <0 : net outflow into compartment
+    * =0 : mass is balanced
+    * >0 : net inflow into compartment
+    * <0 : net outflow into compartment
 
     We will accept some net inflow, but we wish to remove all of the net outflows.
 
     For the first set of constraints (the ones with eps) the coefficients in the corresponding rows of A are:
-        *  0: a connection is not contributing to this compartment
-        * -1: a connection is an INLET for this compartment
-        * +1: a connection is an OUTLET for this compartment
+    *  0: a connection is not contributing to this compartment
+    * -1: a connection is an INLET for this compartment
+    * +1: a connection is an OUTLET for this compartment
     For the second set of constraints (the ones with atol_opt) the coefficients are reversed; i.e. -1 is an OUTLET.
 
-    Args:
-        connection_pairing:     Dictionary storing info about which other compartments a given compartment is connected to
-                                    - First key is compartment ID
-                                    - Values is a Dict[int, int]
-                                        - Key is connection ID (positive inlet into this compartment, negative is outlet)
-                                        - Value is the ID of the compartment on the other side
-        volumetric_flows:       Dictionary of the magnitude of volumetric flow through each connection,
-                                    indexed by connection ID.
-                                    Connection ID in this dictionary is ALWAYS positive, need to take absolute sign of
-                                    the value if it's negative (see `connection_pairing` docstring)
-        grouped_bcs:            GroupedBCs object for identifying which connections belong to domain inlets/outlets.
-        atol_opt:               Absolute tolerance for evaluating conservation of mass of the optimized system.
+    Parameters
+    ----------
+    * connection_pairing:   Dictionary storing info about which other compartments a given compartment is connected to
+                            - First key is compartment ID
+                            - Values is a Dict[int, int]
+                                - Key is connection ID (positive inlet into this compartment, negative is outlet)
+                                - Value is the ID of the compartment on the other side
+    * volumetric_flows:     Dictionary of the magnitude of volumetric flow through each connection, indexed by connection ID.
+                            Connection ID in this dictionary is ALWAYS positive, need to take absolute sign of
+                            the value if it's negative (see `connection_pairing` docstring)
+    * grouped_bcs:          GroupedBCs object for identifying which connections belong to domain inlets/outlets.
+    * atol_opt:             Absolute tolerance for evaluating conservation of mass of the optimized system.
 
-    Returns:
-        Nothing. Values are changed implicitly
+    Returns
+    -------
+    * Nothing. Values are updated inplace
     """
+    # Factor to avoid any precision issues when comparing floats
     safety_factor = 0.9
 
     # Small epsilon for conservation of mass to ensure that net flow is always positive.
@@ -150,7 +161,7 @@ def tweak_compartment_flows(
     A = np.zeros((2*n_compartments, n_flows), dtype='b')
     b = np.ones(2*n_compartments)
     b[:n_compartments] *= -eps/v_min
-    b[n_compartments:] *= safety_factor*atol_opt/v_min  # Multiply by 0.9 to avoid any precision issues when comparing floats
+    b[n_compartments:] *= safety_factor*atol_opt/v_min
 
     domain_inlet_outlet_connections = set()
     for compartment, compartment_connections in connection_pairing.items():
@@ -249,26 +260,28 @@ def tweak_final_flows(
     """
     This function is used to adjust the flowrates in the cstr/pfr network so that mass is conserved.
     The adjustment is done by solving a linear programming (optimization) problem over the mass balances.
-    Constraints:  Mass balance around each PFR
-    Objective:    Minimize the total amount adjustment
 
-    See tweak_compartment_flows for an in-depth description
+        Constraints:  Mass balance around each PFR
+        Objective:    Minimize the total amount adjustment
 
-    Args:
-        connections:            Dictionary storing info about which other PFR/CSTR a given PFR/CSTR is connected to
-                                    - First key is PFR/CSTR ID
-                                    - Values is a Dict[int, int]
-                                        - Key is connection ID (positive inlet into this PFR/CSTR, negative is outlet)
-                                        - Value is the ID of the PFR/CSTR on the other side
-        volumetric_flows:       Dictionary of the magnitude of volumetric flow through each connection,
-                                    indexed by connection ID.
-                                    Connection ID in this dictionary is ALWAYS positive, need to take absolute sign of
-                                    the value if it's negative (see `connection_pairing` docstring)
-        grouped_bcs:            GroupedBCs object for identifying which connections belong to domain inlets/outlets.
-        atol_opt:               Absolute tolerance for evaluating conservation of mass of the optimized system
+    See `tweak_compartment_flows` for an in-depth description
 
-    Returns:
-        Nothing. Values are changed implicitly
+    Parameters
+    ----------
+    * connections:      Dictionary storing info about which other PFR/CSTR a given PFR/CSTR is connected to
+                        - First key is PFR/CSTR ID
+                        - Values is a Dict[int, int]
+                            - Key is connection ID (positive inlet into this PFR/CSTR, negative is outlet)
+                            - Value is the ID of the PFR/CSTR on the other side
+    * volumetric_flows: Dictionary of the magnitude of volumetric flow through each connection, indexed by connection ID.
+                        Connection ID in this dictionary is ALWAYS positive, need to take absolute sign of
+                        the value if it's negative (see `connection_pairing` docstring)
+    * grouped_bcs:      GroupedBCs object for identifying which connections belong to domain inlets/outlets.
+    * atol_opt:         Absolute tolerance for evaluating conservation of mass of the optimized system
+
+    Returns
+    -------
+    * Nothing. Values are changed implicitly
     """
 
     # Scale volumetric flows to avoid numerical issues

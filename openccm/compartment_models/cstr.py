@@ -14,6 +14,11 @@
 # You should have received a copy of the GNU Lesser General Public License along with OpenCCM. If not, see             #
 # <https://www.gnu.org/licenses/>.                                                                                     #
 ########################################################################################################################
+
+r"""
+Functions related to creating a network of CSTRs out of a network of compartments.
+"""
+
 from typing import List, Set, Tuple, Dict
 
 import numpy as np
@@ -36,36 +41,38 @@ def connect_cstr_compartments(compartment_network:      Dict[int, Dict[int, Dict
     Unlike the PFR-based approach, this CSTR-based approach calculates the net flow between two compartments.
     If this net flow is below the user-specified threshold, then a connection between the two compartments is not created.
 
-    Args:
-        compartment_network:    A dictionary representation of the compartments in the network.
-                                Keys are compartment IDs, and values are dictionary.
-                                - For each of those dictionaries, the keys are the index of a neighboring compartment
-                                  and the values are another dictionary.
-                                    - For each of those dictionaries, the keys are the index of the bounding entity
-                                      between the two compartments, and the values are Tuples of two values.
-                                        - The 1st is the index of the element upwind of that boundary facet.
-                                        - The 2nd is the outward facing unit normal for that boundary facet.
-        mesh:                   The mesh the problem was solved on.
-        flows_and_upwind:       2D object array indexed by facet ID.
-                                - 1st column is volumetric flowrate through facet.
-                                - 2nd column is a flag indicating which of a facet's elements are upwind of it.
-                                    - 0, and 1 represent the index into mesh.facet_elements[facet]
-                                    - -1 is used for boundary elements to represent
-        final:                  If asserts and all calculations should be performed.
-                                This is set to False when function is called from merge_compartments since some may
-                                be too small for the invariants to be true.
-        config_parser:          The OpenCCM ConfigParser.
+    Parameters
+    ----------
+    * compartment_network:  A dictionary representation of the compartments in the network.
+                            Keys are compartment IDs, and values are dictionary.
+                            - For each of those dictionaries, the keys are the index of a neighboring compartment
+                              and the values are another dictionary.
+                                - For each of those dictionaries, the keys are the index of the bounding entity
+                                  between the two compartments, and the values are Tuples of two values.
+                                    - The 1st is the index of the element upwind of that boundary facet.
+                                    - The 2nd is the outward facing unit normal for that boundary facet.
+    * mesh:                 The mesh the problem was solved on.
+    * flows_and_upwind:     2D object array indexed by facet ID.
+                            - 1st column is volumetric flowrate through facet.
+                            - 2nd column is a flag indicating which of a facet's elements are upwind of it.
+                                - 0, and 1 represent the index into mesh.facet_elements[facet]
+                                - -1 is used for boundary elements to represent
+    * final:                If asserts and all calculations should be performed.
+                            This is set to False when function is called from merge_compartments since some may
+                            be too small for the invariants to be true.
+    * config_parser:        The OpenCCM ConfigParser.
 
-    Returns:
-        connection_pairing:     Dictionary storing info about which other compartments a given compartment is connected to
-                                - Key is compartment ID
-                                - Values is a Dict[int, int]
-                                    - Key is connection ID (positive inlet into this compartment, negative is outlet)
-                                    - Value is the ID of the compartment on the other side
-        volumetric_flows:       Dictionary of the magnitude of volumetric flow through each connection,
-                                indexed by connection ID.
-                                Connection ID in this dictionary is ALWAYS positive, need to take absolute sign of
-                                the value if it's negative (see `connection_pairing` docstring)
+    Returns
+    -------
+    1. connection_pairing:   Dictionary storing info about which other compartments a given compartment is connected to
+                            - Key is compartment ID
+                            - Values is a Dict[int, int]
+                                - Key is connection ID (positive inlet into this compartment, negative is outlet)
+                                - Value is the ID of the compartment on the other side
+    2. volumetric_flows:     Dictionary of the magnitude of volumetric flow through each connection,
+                            indexed by connection ID.
+                            Connection ID in this dictionary is ALWAYS positive, need to take absolute sign of
+                            the value if it's negative (see `connection_pairing` docstring)
     """
     # The minimum volumetric flow required between two compartments for a connection to be added between them.
     flow_threshold = config_parser.get_item(['COMPARTMENT MODELLING', 'flow_threshold'], float)
@@ -141,39 +148,40 @@ def create_cstr_network(compartments:           Dict[int, Set[int]],
 
     Each compartment will be represented as single CSTR.
 
-    Args:
-        compartments:           A dictionary representation of the elements in the compartments.
-                                Keys are compartment IDs, values are sets containing the indices
-                                of the elements in the compartment.
-        compartment_network:    A dictionary representation of the compartments in the network.
-                                Keys are compartment IDs, and values are dictionary.
-                                - For each of those dictionaries, the keys are the index of a neighboring compartment
-                                  and the values are another dictionary.
-                                    - For each of those dictionaries, the keys are the index of the bounding entity
-                                      between the two compartments, and the values are Tuples of two values.
-                                        - The 1st is the index of the element upwind of that boundary facet.
-                                        - The 2nd is the outward facing unit normal for that boundary facet.
-        mesh:                   The mesh containing the compartments.
-        flows_and_upwind:       2D object array indexed by facet ID.
-                                - 1st column is volumetric flowrate through facet.
-                                - 2nd column is a flag indicating which of a facet's elements are upwind of it.
-                                    - 0, and 1 represent the index into mesh.facet_elements[facet]
-                                    - -1 is used for boundary elements to represent
-        dir_vec:                Numpy array of direction vectors, row i is for element i.
-        config_parser:          The OpenCCM ConfigParser
+    Parameters
+    ----------
+    * compartments:         A dictionary representation of the elements in the compartments.
+                            Keys are compartment IDs, values are sets containing the indices
+                            of the elements in the compartment.
+    * compartment_network:  A dictionary representation of the compartments in the network.
+                            Keys are compartment IDs, and values are dictionary.
+                            - For each of those dictionaries, the keys are the index of a neighboring compartment
+                              and the values are another dictionary.
+                                - For each of those dictionaries, the keys are the index of the bounding entity
+                                  between the two compartments, and the values are Tuples of two values.
+                                    - The 1st is the index of the element upwind of that boundary facet.
+                                    - The 2nd is the outward facing unit normal for that boundary facet.
+    * mesh:                 The mesh containing the compartments.
+    * flows_and_upwind:     2D object array indexed by facet ID.
+                            - 1st column is volumetric flowrate through facet.
+                            - 2nd column is a flag indicating which of a facet's elements are upwind of it.
+                                - 0, and 1 represent the index into mesh.facet_elements[facet]
+                                - -1 is used for boundary elements to represent
+    * dir_vec:              Numpy array of direction vectors, row i is for element i.
+    * config_parser:        The OpenCCM ConfigParser
 
-    Returns:
-        ~: A tuple containing, in order:
-        1. connections:             A dictionary representing the CSTR network.
-                                    The keys are the IDs of each CSTR, the values are tuples of two dictionaries.
-                                        - The first dictionary is for flows into the CSTR.
-                                        - The second dictionary is for flows out of the CSTR.
-                                    For both dictionaries, the key is the connection ID
-                                    and the value is the ID of the CSTR on the other end of the connection.
-        2. volumes:                 A numpy array of the volume of each CSTR indexed by its ID.
-        3. volumetric_flows:        A numpy array of the volumetric flowrate through each connection indexed by its ID.
-        4. compartment_to_cstr_map: A new_id_for between a compartment ID and the ID of the CSTR representing it.
-                                    Here in order to preserve consistency with create_pfr_network.
+    Returns
+    -------
+    1. connections:             A dictionary representing the CSTR network.
+                                The keys are the IDs of each CSTR, the values are tuples of two dictionaries.
+                                    - The first dictionary is for flows into the CSTR.
+                                    - The second dictionary is for flows out of the CSTR.
+                                For both dictionaries, the key is the connection ID
+                                and the value is the ID of the CSTR on the other end of the connection.
+    2. volumes:                 A numpy array of the volume of each CSTR indexed by its ID.
+    3. volumetric_flows:        A numpy array of the volumetric flowrate through each connection indexed by its ID.
+    4. compartment_to_cstr_map: A new_id_for between a compartment ID and the ID of the CSTR representing it.
+                                Here in order to preserve consistency with create_pfr_network.
     """
     print('Creating CSTR network')
 
