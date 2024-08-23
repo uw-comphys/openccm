@@ -15,4 +15,8 @@
 # <https://www.gnu.org/licenses/>.                                                                                     #
 ########################################################################################################################
 
+r"""
+Contains all functions related to identifying compartments.
+"""
+
 from .unidirectional import calculate_compartments, create_compartment_network
