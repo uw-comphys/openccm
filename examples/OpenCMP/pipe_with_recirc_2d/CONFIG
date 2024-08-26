@@ -32,3 +32,4 @@ outlet_bc_name         = outlet
 output_VTK             = False
 calculate_rtd          = True
 plot_results           = True
+;network_diagram       = True

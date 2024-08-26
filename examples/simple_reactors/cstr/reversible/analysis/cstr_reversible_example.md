@@ -95,7 +95,7 @@ $$ err = \frac{\sum_i^N \lvert sol^a_i - sol^n_i \rvert}{N} $$
 
 ### Simulation for Small $k$
 
-Simulations were run using varying tolerances of 1e-3, 1e-7, 1e-10, and 1e-13 for both absolute and relative tolerances using the following $k$ values:
+Simulations were run using varying tolerances of $10^{-3}$, $10^{-7}$, $10^{-10}$, and $10^{-13}$ for both absolute and relative tolerances using the following $k$ values:
 $$ k_f = 1 \times 10^{-2} s^{-1} $$
 $$ k_r = 1 \times 10^{-4} s^{-1} $$
 
