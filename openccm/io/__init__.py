@@ -15,5 +15,9 @@
 # <https://www.gnu.org/licenses/>.                                                                                     #
 ########################################################################################################################
 
+r"""
+The io modules contains functions related IO for each of the different supported CFD backends.
+"""
+
 from .opencmp import fes_from_opencmp_config, load_opencmp_results
 from .openfoam import load_velocity_and_direction_openfoam, read_boundary_condition, read_mesh_data

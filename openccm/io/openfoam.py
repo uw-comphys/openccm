@@ -15,6 +15,10 @@
 # <https://www.gnu.org/licenses/>.                                                                                     #
 ########################################################################################################################
 
+r"""
+All functions related to file IO for OpenFOAM CFD results.
+"""
+
 import re
 from typing import Tuple, Union, TypeVar, List, Type, Dict
 
@@ -22,18 +26,22 @@ import numpy as np
 
 from openccm.config_functions import ConfigParser
 
+T = TypeVar('T', int, float)
+
 
 def load_velocity_and_direction_openfoam(config_parser: ConfigParser) -> Tuple[np.ndarray, np.ndarray]:
     """
     Load the velocity vector from file and calculate the direction vector.
     Both are indexed by element id.
 
-    Args:
-        config_parser:  The OpenCCM ConfigParser for the simulation.
+    Parameters
+    ----------
+    * config_parser:  The OpenCCM ConfigParser for the simulation.
 
-    Returns:
-        dir_vec:    Numpy array of direction vectors where the ith row represents the ith mesh element.
-        vel_vec:    Numpy array of velocity vectors where the ith row represents the ith mesh element.
+    Returns
+    -------
+    * dir_vec:    Numpy array of direction vectors where the ith row represents the ith mesh element.
+    * vel_vec:    Numpy array of velocity vectors where the ith row represents the ith mesh element.
     """
     print("Start LOAD")
     min_magnitude_threshold = config_parser.get_item(['INPUT', 'min_magnitude_threshold'], float)
@@ -57,11 +65,13 @@ def read_boundary_condition(bc_file_path: str) -> Dict[str, Tuple[int, int]]:
     """
     Read boundary conditions from a file.
 
-    Args:
-        bc_file_path: The path to the file containing the boundary conditions.
+    Parameters
+    ----------
+    * bc_file_path: The path to the file containing the boundary conditions.
 
-    Returns:
-        ~: A dictionary where the keys are boundary names and the values are tuples of (start_face, n_faces).
+    Returns
+    -------
+    * bc_names: Mapping between boundary names and a tuple of (start_face, n_faces).
     """
     with open(bc_file_path, "r") as file:
         content = file.read()
@@ -78,21 +88,20 @@ def read_boundary_condition(bc_file_path: str) -> Dict[str, Tuple[int, int]]:
     return bc_names
 
 
-T = TypeVar('T', int, float)
-
-
 def read_mesh_data(file_path: str, dataType: Type[T]) -> Union[List[List[T]], np.ndarray]:
     """
     Read mesh data from a file.
 
-    Args:
-        file_path:  The path to the file containing the mesh data.
-        dataType:   The data type to use for parsing the data.
+    Parameters
+    ----------
+    * file_path:    The path to the file containing the mesh data.
+    * dataType:     The data type to use for parsing the data.
                     This value is only used if the entries as scalar.
-                    If the entries as vectors, e.g. "(10 3 4 5)\n", then floats will always be used.
+                    If the entries as vectors, e.g. "(10 3 4 5)\\n", then floats will always be used.
 
-    Returns:
-        ~:  The mesh data as a List of Lists for handling ragged entries (e.g. non-uniform number of vertices per element)
+    Returns
+    -------
+    * data: The mesh data as a List of Lists for handling ragged entries (e.g. number of vertices per element)
             or numpy array for uniformly sized entries.
     """
     if dataType not in (int, float):
@@ -133,6 +142,6 @@ def read_mesh_data(file_path: str, dataType: Type[T]) -> Union[List[List[T]], np
         else:
             data = np.zeros(num_entries, dtype=dataType)
             data[0] = dataType(line)
-            for i in range(1, num_entries):  # Start at 1! Had to use the first line to see if scalar or vector
+            for i in range(1, num_entries):  # Start at 1! First (0th) line to see if scalar or vector
                 data[i] = dataType(file.readline())
     return data

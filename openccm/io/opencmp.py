@@ -15,6 +15,10 @@
 # <https://www.gnu.org/licenses/>.                                                                                     #
 ########################################################################################################################
 
+r"""
+All functions related to file IO for OpenCMP CFD results.
+"""
+
 from typing import Tuple, Any
 from pathlib import Path
 
@@ -25,20 +29,22 @@ from numpy import ndarray
 from ..config_functions import ConfigParser
 
 
-def load_opencmp_results(config_parser: ConfigParser) -> Tuple[Any, Any, ndarray, ndarray]:
+def load_opencmp_results(config_parser: ConfigParser) -> Tuple['ngsolve.Mesh', 'ngsolve.GridFunction', ndarray, ndarray]:
     """
     Function to load the OpenCMP results and return them
 
     NOTE: All file paths are assumed to be relative to the working directory.
 
-    Args:
-        config_parser: Custom OpenCCM ConfigParser object from which to get values
+    Parameters
+    ----------
+    * config_parser: Custom OpenCCM ConfigParser object from which to get values
 
-    Returns:
-        mesh:     NGsolve mesh representing the original mesh but refined {num_refinements} times.
-        n_gfu:    Direction vector projected on the refined mesh using a 0th order fes (1 value per element)
-        dir_vec:  Direction vector on the REFINED mesh.
-        vel_vec:  Velocity vector using ORIGINAL fes but on the REFINED mesh.
+    Returns
+    -------
+    * mesh:     NGsolve mesh representing the original mesh but refined {num_refinements} times.
+    * n_gfu:    Direction vector projected on the refined mesh using a 0th order fes (1 value per element)
+    * dir_vec:  Direction vector on the REFINED mesh.
+    * vel_vec:  Velocity vector using ORIGINAL fes but on the REFINED mesh.
     """
     print("Start LOAD")
     import ngsolve as ngs
@@ -96,18 +102,20 @@ def load_opencmp_results(config_parser: ConfigParser) -> Tuple[Any, Any, ndarray
     return mesh_f, n_gfu, dir_vec, vel_vec
 
 
-def _calculate_n(velocity, min_magnitude_threshold: float, mesh):
+def _calculate_n(velocity: 'ngsolve.GridFunction', min_magnitude_threshold: float, mesh: 'ngsolve.Mesh'):
     """
     Calculate the velocity direction field.
     Locations where the velocity magnitude is below the specified threshold are set to zero velocity.
 
-    Args:
-        velocity:                   The velocity field.
-        min_magnitude_threshold:    Magnitude threshold below which a velocity is set to zero.
-        mesh:                       The NGSolve mesh object on which the simulation was solved.
+    Parameters
+    ----------
+    velocity:                   The velocity field.
+    min_magnitude_threshold:    Magnitude threshold below which a velocity is set to zero.
+    mesh:                       The NGSolve mesh object on which the simulation was solved.
 
-    Returns:
-        ~: GridFunction: The velocity direction vector field.
+    Returns
+    -------
+    * n: GridFunction: The velocity direction vector field.
     """
     import ngsolve as ngs
     # Finite element spaces for the direction vector and teh velocity magnitude.
@@ -130,13 +138,15 @@ def _calculate_n(velocity, min_magnitude_threshold: float, mesh):
 
 def _mesh_file_path_from_opencmp_config(openccm_config_parser: ConfigParser) -> str:
     """
-    Function to get the path to the mesh file used by the OpenCMP simulation.
+    Function to get the absolute path to the mesh file used by the OpenCMP simulation.
 
-    Args:
-        openccm_config_parser: The OpenCCM ConfigParser.
+    Parameters
+    ----------
+    * openccm_config_parser: The OpenCCM ConfigParser.
 
-    Returns:
-        str: The absolute path to the mesh file used by the OpenCMP simulation.
+    Returns
+    -------
+    * mesh_file_path_abs: The absolute path to the mesh file used by the OpenCMP simulation.
     """
     from opencmp.config_functions import ConfigParser as OpenCMPConfigParser
 
@@ -152,17 +162,19 @@ def _mesh_file_path_from_opencmp_config(openccm_config_parser: ConfigParser) -> 
     return mesh_file_path_abs
 
 
-def fes_from_opencmp_config(opencmp_configfile_path: str, mesh):
+def fes_from_opencmp_config(opencmp_configfile_path: str, mesh: 'ngsolve.Mesh') -> 'ngsolve.FESpace':
     """
     Function to read the OpenCMP Configfile and create the necessary finite element spaces onto which
     the simulation results can be loaded.
 
-    Args:
-        opencmp_configfile_path:    Path to the OpenCMP ConfigFile used for the simulation
-        mesh:                       NGSolve mesh object to create the element spaces on.
+    Parameters
+    ----------
+    * opencmp_configfile_path:    Path to the OpenCMP ConfigFile used for the simulation
+    * mesh:                       NGSolve mesh object to create the element spaces on.
 
-    Returns:
-        ~:  The full finite element space.
+    Returns
+    -------
+    * fes:  The full finite element space.
     """
     import ngsolve as ngs
     from opencmp.config_functions import ConfigParser as OpenCMPConfigParser
