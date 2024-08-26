@@ -15,4 +15,8 @@
 # <https://www.gnu.org/licenses/>.                                                                                     #
 ########################################################################################################################
 
+r"""
+OpenCCM extends python's ConfigParser to have several useful functionalities.
+"""
+
 from .expanded_config_parser import ConfigParser
