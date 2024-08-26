@@ -14,6 +14,11 @@
 # You should have received a copy of the GNU Lesser General Public License along with OpenCCM. If not, see             #
 # <https://www.gnu.org/licenses/>.                                                                                     #
 ########################################################################################################################
+
+r"""
+A collection of helper functions used through the module.
+"""
+
 from typing import Optional, Iterable
 
 import numpy as np
@@ -35,8 +40,9 @@ class H(Function):
         Ramping happens over a half-period to provide a zero derivative at both the start and end point of the
         smoothing period.
 
-        Args:
-            t:          The time at which to evaluate the function at
+        Parameters
+        ----------
+        * t: The time at which to evaluate the function at
         """
         return Piecewise(
             (0,                   t < 0),
@@ -50,22 +56,24 @@ def generate_t_eval(config_parser: ConfigParser) -> Optional[Iterable]:
     Helper function to generate the time evaluation points which are given to solve_ivp.
 
     4 options are available:
-        1. 'all':               DEFAULT. All time steps will be returned.
-        2. dt, 'linear':        Linear distribution of points between t0 and tf with a spacing of dt.
-                                t0 and tf are guaranteed to be the last and end point, even if the last step
-                                is not of size dt.
-        3. 'log', num_points:   Logarithmic distribution of points between t0 and tf with num_points points.
-                                The exact values of t0 and tf are guaranteed to be the first and last point.
-                                If t0 is 0, this is range is approximated by having a log distribution between
-                                first_timestep and tf with num_points-1 points and then pre-pending 0 to the list.
-        4. 't1, t2, ..., tn':   Arbitrary time points which are sorted. Only requirements are: t1 >= t0 and tn <= tf.
+    1. 'all':               DEFAULT. All time steps will be returned.
+    2. dt, 'linear':        Linear distribution of points between t0 and tf with a spacing of dt.
+                            t0 and tf are guaranteed to be the last and end point, even if the last step
+                            is not of size dt.
+    3. 'log', num_points:   Logarithmic distribution of points between t0 and tf with num_points points.
+                            The exact values of t0 and tf are guaranteed to be the first and last point.
+                            If t0 is 0, this is range is approximated by having a log distribution between
+                            first_timestep and tf with num_points-1 points and then pre-pending 0 to the list.
+    4. 't1, t2, ..., tn':   Arbitrary time points which are sorted. Only requirements are: t1 >= t0 and tn <= tf.
 
-    Args:
-        config_parser: The OpenCCM ConfigParser from which to get the t_eval string and the start and end times.
+    Parameters
+    ----------
+    * config_parser: The OpenCCM ConfigParser from which to get the t_eval string and the start and end times.
 
-    Returns:
-        ~:  Type depends on t_eval form. None is returned if all data points are to be stored,
-            otherwise a list of floats or a numpy array is returned.
+    Returns
+    -------
+    ts: Type depends on t_eval form. None is returned if all data points are to be stored,
+        otherwise a list of floats or a numpy array is returned.
     """
     t_evel_str = config_parser.get_list(['SIMULATION', 't_eval'], str)
     t0, tf     = config_parser.get_list(['SIMULATION', 't_span'], float)

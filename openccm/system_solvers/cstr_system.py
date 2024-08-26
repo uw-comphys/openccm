@@ -15,6 +15,10 @@
 # <https://www.gnu.org/licenses/>.                                                                                     #
 ########################################################################################################################
 
+r"""
+The functions required for solving a simulation on a CSTR network.
+"""
+
 import os
 from collections import defaultdict
 from typing import Callable, Dict, List, Set, Tuple
@@ -45,29 +49,31 @@ def solve_system(
     """
     Perform a transient simulation, including reaction, on a network of CSTRs.
 
-    Args:
-        cstr_network:   A tuple containing, in order (from `create_cstr_network`):
-                            1. connections:         A dictionary representing the CSTR network.
-                                                    The keys are the IDs of each CSTR, the values are tuples of two dictionaries.
-                                                        - The first dictionary is for flows into the CSTR.
-                                                        - The second dictionary is for flows out of the CSTR.
-                                                    For both dictionaries, the key is the connection ID
-                                                    and the value is the ID of the CSTR on the other end of the connection.
-                            2. volumes:             A numpy array of the volume of each CSTR indexed by its ID.
-                            3. volumetric_flows:    A numpy array of the volumetric flowrate through each connection indexed by its ID.
-        config_parser:  OpenCCM ConfigParser for getting settings.
-        grouped_bcs:    GroupedBCs object needed to create the boundary conditions.
+    Parameters
+    ----------
+    * cstr_network:     A tuple containing, in order (from `create_cstr_network`):
+                        1. connections: A dictionary representing the CSTR network.
+                                        The keys are the IDs of each CSTR, the values are tuples of two dictionaries.
+                                        For both dictionaries, the key is the connection ID
+                                        and the value is the ID of the CSTR on the other end of the connection.
+                                        1. The first dictionary is for flows into the CSTR.
+                                        2. The second dictionary is for flows out of the CSTR.
+                        2. volumes:             A numpy array of the volume of each CSTR indexed by its ID.
+                        3. volumetric_flows:    A numpy array of the volumetric flowrate through each connection indexed by its ID.
+    * config_parser:    OpenCCM ConfigParser for getting settings.
+    * grouped_bcs:      GroupedBCs object needed to create the boundary conditions.
 
-    Returns:
-        c:                  NxMxT numpy array containing the concentration of each species at each CSTR at each point in time.
-                            N is number of CSTRs, M is number of species, and T is number of time steps.
-        t:                  The times at which the concentrations were saved at, vector of T entries.
-        inlet_map:          A map between the inlet ID and the ID of the CSTR(s) connected to it and the connection ID.
-                            Key to dictionary is inlet ID, value is a list of tuples.
-                            First entry in tuple is the CSTR ID, second value is the connection ID.
-        outlet_map:         A map between the outlet ID and the ID of the CSTR(s) connected to it and the connection ID.
-                            Key to dictionary is outlet ID, value is a list of tuples.
-                            First entry in tuple is the CSTR ID, second value is the connection ID.
+    Returns
+    -------
+    * c:            NxMxT numpy array containing the concentration of each species at each CSTR at each point in time.
+                    N is number of CSTRs, M is number of species, and T is number of time steps.
+    * t:            The times at which the concentrations were saved at, vector of T entries.
+    * inlet_map:    A map between the inlet ID and the ID of the CSTR(s) connected to it and the connection ID.
+                    Key to dictionary is inlet ID, value is a list of tuples.
+                    First entry in tuple is the CSTR ID, second value is the connection ID.
+    * outlet_map:   A map between the outlet ID and the ID of the CSTR(s) connected to it and the connection ID.
+                    Key to dictionary is outlet ID, value is a list of tuples.
+                    First entry in tuple is the CSTR ID, second value is the connection ID.
     """
     print("Solving simulation")
 
@@ -154,21 +160,28 @@ def ddt(t: float,
         ) -> np.ndarray:
     """
     Models the change in concentration within each CSTR as:
+
         dcdt = c @ A + b + r
+
     where
     - A = Q / V             for inlet flows from other CSTRs and all outlet flows
-    - b = (Q / V)|inlets    for domain inlets
+    - b = (Q / V) @ inlets  for domain inlets
     - r = R                 for reactions
 
     Note that the division by volume has been performed ahead of time.
 
-    Args:
-        t:                  The current time
-        c:                  The concentration indexed by CSTR ID
-        Q_div_v:            The sum of volumetric flowrates
-        c_shape:            Tuple indicating the shape of c (num_cstr, num_species)
-        reactions:          The reactions function in generated_code.py containing system of equations
-        bcs:                The boundary conditions on domain inlets (all others don't matter).
+    Parameters
+    ----------
+    * t:                  The current time
+    * c:                  The concentration indexed by CSTR ID
+    * Q_div_v:            The sum of volumetric flowrates
+    * c_shape:            Tuple indicating the shape of c (num_cstr, num_species)
+    * reactions:          The reactions function in generated_code.py containing system of equations
+    * bcs:                The boundary conditions on domain inlets (all others don't matter).
+
+    Returns
+    -------
+    * _ddt: The time derivative at each discretization point for each specie at the given time and concentrations
     """
     c = c.reshape(c_shape)
 

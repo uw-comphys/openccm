@@ -15,6 +15,10 @@
 # <https://www.gnu.org/licenses/>.                                                                                     #
 ########################################################################################################################
 
+r"""
+All functions related to running a simulation on the PFR/CSTR network.
+"""
+
 import os
 import sys
 from typing import Tuple, Dict, List, Optional, Callable
@@ -27,13 +31,46 @@ from .. import ConfigParser
 from ..mesh import GroupedBCs
 
 
-def solve_system(model: str, model_network, config_parser, grouped_bc) \
+def solve_system(model:         str,
+                 model_network: Tuple[
+                                    Dict[int, Tuple[Dict[int, int], Dict[int, int]]],
+                                    np.ndarray,
+                                    np.ndarray,
+                                    Dict[int, List[int]]],
+                 config_parser: ConfigParser,
+                 grouped_bc:    GroupedBCs) \
         -> Tuple[
             np.ndarray,
             np.ndarray,
             Dict[int, List[Tuple[int, int]]],
             Dict[int, List[Tuple[int, int]]]]:
-    """Wrapper function to """
+    """
+    Wrapper function to clean up call sites.
+
+    Calls either `openccm.system_solvers.cstr_system.solve_system` or `openccm.system_solvers.pfr_system.solve_system`
+    based on the value of `model`.
+
+    Parameters
+    ----------
+    * model:            String indicating which model (pfr vs cstr) is being used.
+    * model_network:    Network of PFRs/CSTR. See `openccm.compartment_models.pfr.create_pfr_network`
+                        or `openccm.compartment_models.cstr.create_cstr_network` for more details.
+    * config_parser:    OpenCCM ConfigParser used for getting settings.
+    * grouped_bcs:      GroupedBCs object for identifying which connections belong to domain inlets/outlets.
+
+    Returns
+    -------
+    * t:            The times at which the ODE was solved (controlled by solve_ivp)
+    * c:            The corresponding values for time t.
+    * inlet_map:    Map between a domain inlet IDs and the PFRs/CSTRs that they're connected to.
+                    Keys are domain inlet IDs, values are a list of tuples.
+                    - The first entry in the tuple is the PFR/CSTR id,
+                    - The second is the id of the connection between the inlet and the PFR/CSTR.
+    * outlet_map:   Map between a domain outlet IDs and the PFRs/CSTRs that they're connected to.
+                    Keys are domain inlet IDs, values are a list of tuples.
+                    - The first entry in the tuple is the PFR/CSTR id,
+                    - The second is the id of the connection between the outlet and the PFR/CSTR.
+    """
     if model == 'pfr':
         return solve_pfr(model_network, config_parser, grouped_bc)
     else:
@@ -52,25 +89,27 @@ def load_and_prepare_bc_ic_and_rxn(config_parser:       ConfigParser,
     """
     Wrapper function for creating the initial condition array, applying the initial conditions to it
 
-    Args:
-        config_parser:      OpenCCM ConfigParser used for getting settings.
-        c_shape:            The shape for the concentration array at each timestep (num_species, num_points).
-        points_per_model:   Number of discretization points per model (1 for CSTR, >2 for PFR).
-        _ddt_reshape_shape: Shape needed by _ddt for PFR systems so that the inlet node does not have a reaction
+    Parameters
+    ----------
+    * config_parser:        OpenCCM ConfigParser used for getting settings.
+    * c_shape:              The shape for the concentration array at each timestep (num_species, num_points).
+    * points_per_model:     Number of discretization points per model (1 for CSTR, >2 for PFR).
+    * _ddt_reshape_shape:   Shape needed by _ddt for PFR systems so that the inlet node does not have a reaction
                             occurring at it. Used by `generate_reaction_system`.
-        inlet_map:          Map between a domain inlet IDs and the PFRs that they're connected to.
-                                Keys are domain inlet IDs, values are a list of tuples.
-                                    The first entry in the tuple is the PFR id,
-                                    The second is the id of the connection between the inlet and the PFR.
-        grouped_bcs:        Helper class used for consistent numbering and lookup of boundary conditions by name.
-        Q_weight_inlets:    Lookup all Q_connection / Q_reactor_total for each inlet BC connection.
-        points_for_bc:      Lookup for all discretization points on an inlet BC, index by BC ID. Same ordering as Q_weight_inlets.
-        t0:                 Initial timestep, needed in order to evaluate the BCs at the first timestep if a PFR is used.
+    * inlet_map:            Map between domain inlet IDs and a list of tuples containing info
+                            related to the PFRs/CSTRs they're connected to.
+                            - The first entry in the tuple is the PFR/CSTR ID,
+                            - The second is the ID of the connection between the inlet and the PFR/CSTR.
+    * grouped_bcs:          Helper class used for consistent numbering and lookup of boundary conditions by name.
+    * Q_weight_inlets:      Lookup all Q_connection / Q_reactor_total for each inlet BC connection.
+    * points_for_bc:        Lookup for all discretization points on an inlet BC, index by BC ID. Same ordering as Q_weight_inlets.
+    * t0:                   Initial timestep, needed in order to evaluate the BCs at the first timestep if a PFR is used.
 
-    Returns:
-        rxns:   Numba JITd function for applying reactions, as described by `generate_reaction_system`.
-        bcs:    Numba JITd function for applying the boundary condition, as described by `create_boundary_conditions`.
-        c0:     The initial conditions for the simulation. The
+    Returns
+    -------
+    * rxns: Numba JITd function for applying reactions, as described by `generate_reaction_system`.
+    * bcs:  Numba JITd function for applying the boundary condition, as described by `create_boundary_conditions`.
+    * c0:   The initial conditions for the simulation. The
 
     """
     from .boundary_and_initial_conditions import load_initial_conditions, create_boundary_conditions
