@@ -35,12 +35,16 @@ from .system_solvers import solve_system
 
 def run(config_parser_or_file: Union[ConfigParser, str]) -> Dict[str, int]:
     """
+    The main function of the OpenCCM packages. Sequentially goes through each step required to
+    create the compartmental model, solve a simulation on it, output results, and perform any specified post-processing.
 
-    Args:
-        config_parser_or_file:`
+    Parameters
+    ----------
+    * config_parser_or_file:
 
-    Returns:
-        ~: A dictionary containing mapping between the name of each step and the time, in ns, that the step took.
+    Returns
+    -------
+    * timing_dict: Mapping between the name of each step and the time, in ns, that the step took.
     """
     timing_dict = {}
 
@@ -210,6 +214,9 @@ def run(config_parser_or_file: Union[ConfigParser, str]) -> Dict[str, int]:
 
 
 class CacheInfo:
+    """
+    Helper class to store caching related names and checks.
+    """
     def __init__(self, config_parser: ConfigParser):
         model               = config_parser.get_item(['COMPARTMENT MODELLING',  'model'],               str)
         output_VTK          = config_parser.get_item(['POST-PROCESSING',        'output_VTK'],          bool)
@@ -219,17 +226,29 @@ class CacheInfo:
         OpenCMP             = config_parser.get('INPUT', 'opencmp_sol_file_path', fallback=None) is not None
 
         self.name_cmesh                 = tmp_folder_path + 'cmesh.pickle'
+        """Filename for saving the CMesh."""
         self.name_compartments_pre      = tmp_folder_path + 'compartments_pre.pickle'
+        """Filename for saving the compartments before merging."""
         self.name_compartments_post     = tmp_folder_path + 'compartments_post.pickle'
+        """Filename for saving the compartments after merging."""
         self.name_compartment_network   = tmp_folder_path + 'compartment_network.pickle'
+        """Filename for saving the compartment network."""
         self.name_direction_sol         = tmp_folder_path + 'n_gfu.sol'
+        """Filename for saving the director in OpenCMP format."""
         self.name_direction_vector      = tmp_folder_path + 'dir_vec.npy'
+        """Filename for saving the director in numpy format."""
         self.name_model_info            = output_folder_path + model + '_info'
+        """Filename for saving the model info for visualziation."""
         self.name_model_network         = tmp_folder_path + model + '_network.pickle'
+        """Filename for saving the PFR/CSTR network."""
         self.name_refined_mesh          = tmp_folder_path + 'sim_fine.vol'
+        """Filename for saving the refined OpenCMP mesh."""
         self.name_velocity_info         = output_folder_path + 'velocity_info.vtu'
+        """Filename for saving the velocity for visualization."""
         self.name_velocity_vector       = tmp_folder_path + 'vel_vec.npy'
-        self.name_flows_and_upwind    = tmp_folder_path + 'flows_and_upwind.npy'
+        """Filename for saving the velocity vector in numpy format."""
+        self.name_flows_and_upwind      = tmp_folder_path + 'flows_and_upwind.npy'
+        """Filename for saving the facet flows in numpy format."""
 
         self.already_made_cfd_processed_results = isfile(self.name_direction_vector) \
                                                   and isfile(self.name_velocity_vector) \
@@ -238,11 +257,19 @@ class CacheInfo:
                                                        and isfile(self.name_velocity_info))
 
         self.already_made_cmesh                 = isfile(self.name_cmesh)
+        """Bool indicating if the CMesh has already been created and can be loaded instead of needing to be created."""
         self.already_made_compartments          = isfile(self.name_compartments_pre)
+        """Bool indicating if the compartments have already been created and can be loaded rather than neeing to be created."""
         self.already_made_compartment_network   = isfile(self.name_compartment_network) and isfile(self.name_compartments_post)
+        """Bool indicating if the compartment network has already been created and can be loaded rather than needing to be created."""
+
         self.already_made_cm_info_vtu           = isfile(self.name_model_info + '.vtu')
+        """Bool indicating if the model visualization has already been created."""
         self.already_made_model_network         = isfile(self.name_model_network)
+        """Bool indicating if the model network has already been created and can be loaded instead of needing to be created."""
         self.already_made_flows_and_upwind_file = isfile(self.name_flows_and_upwind)
+        """Bool indicating if the facet flows have already been created and can be loaded instead of needing to be created."""
 
         self.need_opencmp_mesh = OpenCMP and (output_VTK
                                               or not (self.already_made_cmesh and self.already_made_cm_info_vtu))
+        """Bool indicating if the OpenCMP mesh need to be loaded."""
