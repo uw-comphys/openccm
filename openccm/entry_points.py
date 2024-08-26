@@ -34,8 +34,9 @@ def run_openccm():
     Function for running OpenCCM using entry points.
     Invoked as `openccm CONFIG_FILE_PATH`.
 
-    Args (from command line):
-        config_file_path: Filename of the config file to load. Required parameter.
+    Parameters (from command line)
+    ----------
+    * config_file_path: Filename of the config file to load. Required parameter.
     """
     if len(sys.argv) == 1:
         print("ERROR: Provide configuration file path."
