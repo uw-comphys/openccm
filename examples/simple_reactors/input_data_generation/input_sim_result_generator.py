@@ -17,15 +17,34 @@
 # <https://www.gnu.org/licenses/>.                                                                                     #
 ########################################################################################################################
 
-import sys
 
-from .run import run
+# Create a input OpenCMP result to be converted into a single CSTR/PFR
+import os
+from pathlib import Path
 
-if __name__ == '__main__':
+import ngsolve as ngs
+from netgen.read_gmsh import ReadGmsh
 
-    if len(sys.argv) == 1:
-        print("ERROR: Provide configuration file path.")
-        exit(0)
+Path('output/ins_sol/').mkdir(parents=True, exist_ok=True)
 
-    config_file_path = sys.argv[1]
-    run(config_file_path)
+# Define either the velocity or the space time, depending on what's more natural for
+# your particular case
+# velocity = 1
+# tau = 1.0 / velocity
+# print(f"Space time is {tau}.")
+tau = 10
+velocity = 1.0 / tau
+print(f"Velocity is {velocity}")
+
+mesh = ngs.Mesh(ReadGmsh("v=1.msh"))
+
+fes_u = ngs.VectorH1(mesh, order=3)
+fes_p = ngs.H1(mesh, order=2)
+_fes = [fes_u, fes_p]
+fes = ngs.FESpace(_fes)
+
+gfu = ngs.GridFunction(fes)
+gfu.components[0].Interpolate(ngs.CoefficientFunction((velocity, 0)))
+gfu.Save('output/ins_sol/ins_0.0.sol')
+ngs.VTKOutput(ma=mesh, coefs=[c for c in gfu.components], names=['velocity', 'fake pressure'],
+              filename='output/ins_sol/ins_0.0', subdivision=1).Do()
