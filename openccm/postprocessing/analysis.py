@@ -14,6 +14,11 @@
 # You should have received a copy of the GNU Lesser General Public License along with OpenCCM. If not, see             #
 # <https://www.gnu.org/licenses/>.                                                                                     #
 ########################################################################################################################
+
+r"""
+Post-processing functions related to performing analysis on the compartmental model and results from simulations on it.
+"""
+
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple, Set
 
@@ -44,17 +49,19 @@ def network_to_rtd(system_results:   Tuple[
     NOTE: This function assumes the input is a unit step input and is hardcoded into the analysis.
           A smoothed unit step can be used, with only minor impact on the result, as long as it ramps quickly enough.
 
-    Args:
-        system_results: The results from the CM simulation, in the standard format.
-        c_mesh:         The CMesh used to create the compartment network.
-        config_parser:  The OpeCCM ConfigParser used for the simulation and for creating the network.
-        network:        The compartment network on which the results were simulated.
+    Parameters
+    ----------
+    * system_results: The results from the CM simulation, in the standard format.
+    * c_mesh:         The CMesh used to create the compartment network.
+    * config_parser:  The OpeCCM ConfigParser used for the simulation and for creating the network.
+    * network:        The compartment network on which the results were simulated.
 
-    Returns:
-        ~: A single (num species)x(num times)x3 array containing 3 sub-items:
-            [:, :, 0] is time.
-            [:, :, 1] is E(t), the probability density function derived from F(t)
-            [:, :, 2] is F(t), the cumulative probability function, calculated directly.
+    Returns
+    -------
+    * rtd:  A single (num species)x(num times)x3 array containing 3 sub-items:
+            - `[:, :, 0]` is time.
+            - `[:, :, 1]` is E(t), the probability density function derived from F(t)
+            - `[:, :, 2]` is F(t), the cumulative probability function, calculated directly.
     """
     print("Start calculating RTD")
     id_inlet  = c_mesh.grouped_bcs.id(config_parser.get_item(['POST-PROCESSING', 'inlet_bc_name'], str))
@@ -101,11 +108,19 @@ def plot_results(system_results:    Tuple[
                                         Dict[int, List[Tuple[int, int]]]],
                  c_mesh:            CMesh,
                  config_parser:     ConfigParser,
-                 rtd:               Optional[np.ndarray] = None,) -> None:
+                 rtd:               Optional[np.ndarray] = None) -> None:
     """
+    Generate plots of inlet and outlet concentrations in time and optionally for the residence time distributions
+    for each specie.
 
-    Args:
+    NOTE: Requires the optional Matplotlib dependency. Install with `pip install matplotlib`.
 
+    Parameters
+    ----------
+    system_results: The results of running a simulation on the compartmental model.
+    c_mesh:         The CMesh used for creating the compartmental model.
+    config_parser:  The OpenCCM Configparser used for the simulation and for creating the network.
+    rtd:            Optional, the results of running a residence time distribution analysis.
     """
     try:
         import matplotlib.pyplot as plt
@@ -175,19 +190,22 @@ def visualize_model_network(model_network:  Tuple[
                             config_parser:  ConfigParser
                             ) -> None:
     """
-    Take in a network of PFRs/CSTR and create a visual representation of them using the NetworkX package.
+    Take in a network of PFRs/CSTR and create a visual representation of network.
+
+    NOTE: Requires the optional NetworkX dependency. Install with `pip install networkx`.
 
     This representation is really meant for 2D systems since it produces a 2D image.
     If a 3D system is provided the network will be projected on the xy-plane.
 
-    Args:
-        model_network:  The network of reactors (current PFRs/CSTRs) to visualize.
-                        See _compartments_to_pfrs or compartments_to_cstrs for an in-depth description.
-        compartments:   The compartments that were converted into the model network.
-                        See calculate_compartments for an in-depth description.
-        mesh:           The OpenCCM mesh used to generate the reactor network.
-        n:              Direction vector as a numpy array where the ith row represents the ith mesh element.
-        config_parser:  OpenCCM ConfigParser used for parameters.
+    Parameters
+    ----------
+    * model_network:    The network of reactors (current PFRs/CSTRs) to visualize.
+                        See `openccm.compartment_models.pfr.create_pfr_network`
+                        or `openccm.compartment_models.cstr.create_cstr_network` for an in-depth description.
+    * compartments:     Mapping between compartment ID and the set of elements IDs that make it up.
+    * mesh:             The CMesh used to generate the compartmental model.
+    * n:                Direction vector as a numpy array where the ith row represents the ith mesh element.
+    * config_parser:    OpenCCM ConfigParser used for parameters.
     """
     try:
         import networkx as nx
@@ -306,7 +324,7 @@ def visualize_model_network(model_network:  Tuple[
         position[1] *= max(1, scale)
 
     min_distance_between_nodes = 0.1
-    spread_out_nodes(positions, min_distance_between_nodes)
+    _spread_out_nodes(positions, min_distance_between_nodes)
 
     ####################################################################################################################
     # 6. Calculate the aspect ratio for the plot by finding the binding box around the points
@@ -350,7 +368,7 @@ def visualize_model_network(model_network:  Tuple[
     print("Done visualizing model network")
 
 
-def spread_out_nodes(positions: Dict[int, np.ndarray], node_min_distance: float) -> None:
+def _spread_out_nodes(positions: Dict[int, np.ndarray], node_min_distance: float) -> None:
     """
     This function tweaks to position of the passed in nodes to try to stop overlaps from happening.
     A minimum L2 distance between the nodes is enforced.
@@ -387,12 +405,10 @@ def spread_out_nodes(positions: Dict[int, np.ndarray], node_min_distance: float)
     Attempting to do it in one go would be very computationally demanding as it would involve P unknowns and
     P^2 non-linear constraints where P is the number of nodes (# of PFRS), which can easily be O(10^2) if not O(10^3).
 
-    Args:
-        positions:          Mapping between node name (int) and 2D position.
-        node_min_distance:  The minimum distance between any two nodes.
-
-    Returns:
-        ~: None. positions is modified in place.
+    Parameters
+    ----------
+    * positions:          Mapping between node name (int) and 2D position.
+    * node_min_distance:  The minimum distance between any two nodes.
     """
     x_min =  np.inf
     x_max = -np.inf
@@ -430,11 +446,13 @@ def spread_out_nodes(positions: Dict[int, np.ndarray], node_min_distance: float)
         """
         Helper function to find which cell (row, col) to use for a node with a positon vector x.
 
-        Args:
-            x: The position vector to locate
+        Parameters
+        ----------
+        * x: The position vector to locate
 
-        Returns:
-            row, col: The row and column in the grid in which the position vector lands.
+        Returns
+        --------
+        * row, col: The row and column in the grid in which the position vector lands.
         """
         i_col_row = np.int64(np.ceil((x-origin) / d) - 1)
 
@@ -456,30 +474,32 @@ def spread_out_nodes(positions: Dict[int, np.ndarray], node_min_distance: float)
         NOTE: This function captures many variables from the outside scope, they can't be passed in by argument
         since scipy will only call it with one argument.
 
-        Args:
-            delta:          2*num_movable vector of proposed displacements (in dx, dy ordering).
-            dist_vec_0:     Vector representing the distances between paired nodex
-                            The first num_movable*num_fixed entries are movable-to-fixed nodes distances
-                            with the movable id moving slowly, i.e:
-                                0:                            m_0 -> f_0
-                                1:                            m_0 -> f_1
-                                ...
-                                num_fixed:                    m_1 -> f_0
-                                num_fixed+1:                  m_1 -> f_1
-                                ...
-                                (num_movable*num_fixed) - 1:  m_num_movable -> f_num_fixed
-                                ...
-                                The subsequent num_movable*(num_movable-1)/2 are movable-to-movable node distances:
-                                num_movable*num_fixed:                    m_0 -> m_1
-                                num_movable*num_fixed+1:                  m_0 -> m_2
-                                ...
-                                num_movable*num_fixed + num_movable-1:    m_1 -> m_2
-                                ...
-            num_movable:    The number of nodes which can be moved.
-            num_fixed:      The number of nodes whose position is fixed.
+        Parameters
+        ----------
+        * delta:        2*num_movable vector of proposed displacements (in dx, dy ordering).
+        * dist_vec_0:   Vector representing the distances between paired nodex
+                        The first num_movable*num_fixed entries are movable-to-fixed nodes distances
+                        with the movable id moving slowly, i.e:
+                            0:                            m_0 -> f_0
+                            1:                            m_0 -> f_1
+                            ...
+                            num_fixed:                    m_1 -> f_0
+                            num_fixed+1:                  m_1 -> f_1
+                            ...
+                            (num_movable*num_fixed) - 1:  m_num_movable -> f_num_fixed
+                            ...
+                            The subsequent num_movable*(num_movable-1)/2 are movable-to-movable node distances:
+                            num_movable*num_fixed:                    m_0 -> m_1
+                            num_movable*num_fixed+1:                  m_0 -> m_2
+                            ...
+                            num_movable*num_fixed + num_movable-1:    m_1 -> m_2
+                            ...
+        * num_movable:    The number of nodes which can be moved.
+        * num_fixed:      The number of nodes whose position is fixed.
 
-        Returns:
-            ~:  Vector indicating the L2 distance between paired nodes. See documentation on `dist_vec_0`
+        Returns
+        -------
+        * dist: Vector indicating the L2 distance between paired nodes. See documentation on `dist_vec_0`
                 For the ordering of points within this vector.
         """
         delta = delta.reshape((len(delta) // 2, 2))

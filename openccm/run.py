@@ -206,7 +206,7 @@ def run(config_parser_or_file: Union[ConfigParser, str]) -> Dict[str, int]:
         start = perf_counter_ns()
         convert_to_vtu_and_save(OpenCMP, model,
                                 system_results, model_network, compartments_post, config_parser, c_mesh,
-                                mesh=mesh if OpenCMP else None,
+                                OpenCMP_mesh=mesh if OpenCMP else None,
                                 n_vec=dir_vec if OpenCMP else None)
         timing_dict['VTU Export'] = perf_counter_ns() - start
 
