@@ -101,7 +101,7 @@ calculate_rtd   = [False]
 inlet_bc_name   = [inlet]
 outlet_bc_name  = [outlet]
 # If a diagram of the CSTR/PFR network should be generated.
-network_diagram = [True]
+network_diagram = [False]
 # The number of subdivisions of the mesh when exporting to VTK.
 subdivisions    = [0]
 # The order of the interpolant to use when projecting the PFR results back on the final mesh.
