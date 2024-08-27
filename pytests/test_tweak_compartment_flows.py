@@ -4,13 +4,13 @@ from typing import Dict
 
 from openccm import ConfigParser
 from openccm.mesh import GroupedBCs
-from openccm.compartment_models.helpers import tweak_compartment_flows, tweak_final_flows
+from openccm.compartment_models.helpers import tweak_compartment_flows
 
 
 def test_tweak_compartment_flows():
     grouped_bcs = GroupedBCs(ConfigParser('CONFIG'))
 
-    m = 100              # Number of compartments on each side of the centerline
+    m = 100             # Number of compartments on each side of the centerline
     n = 1 + 2*m         # Total number of compartments
     delta_x = 1. / n    # Size of each compartment's edge
 
