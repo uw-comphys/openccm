@@ -5,7 +5,7 @@ import shutil
 from pathlib import Path
 from openccm import run, ConfigParser
 
-rel_path_to_examples = '../examples/'
+rel_path_to_examples = '../../examples/'
 
 
 def clean_previous_results(configparser: ConfigParser) -> None:

@@ -15,23 +15,49 @@
 # <https://www.gnu.org/licenses/>.                                                                                     #
 ########################################################################################################################
 
+r"""
+OpenCCM has two entry points:
+1. `openccm` for creating and running the compartmental model, invoked as `openccm CONFIG_FILE_PATH.
+2. `openccm-tests` for running the provided pytests, invoked as `openccm-tests`.
+"""
+
+import os
+import subprocess
 import sys
+from pathlib import Path
+
 from .run import run
 
 
 def run_openccm():
     """
-    Main function that runs OpenCCM.
+    Function for running OpenCCM using entry points.
+    Invoked as `openccm CONFIG_FILE_PATH`.
 
     Args (from command line):
         config_file_path: Filename of the config file to load. Required parameter.
     """
     if len(sys.argv) == 1:
-        print("ERROR: Provide configuration file path.")
+        print("ERROR: Provide configuration file path."
+              "Usage: openccm CONFIG_FILE_PATH")
         exit(1)
     elif len(sys.argv) == 2:
         run(sys.argv[1])
     else:
-        print('ERROR: More than one argument was provided.')
-        print('OpenCCM requires only one (1) argument which must be a path to the configuration file.')
+        print("ERROR: More than one argument was provided."
+              "Usage: openccm CONFIG_FILE_PATH")
         exit(1)
+
+
+def run_tests():
+    """
+    Main function for running all unit tests.
+    Should only be used for the `openccm-tests` entry-point.
+    """
+    print("Starting unit tests, this should take a few seconds.")
+
+    pyinterp = sys.executable
+    tests_dir = os.path.join(Path(__file__).parents[0], 'tests')
+
+    # automatically find and run all unit tests using unittest built-in discovery feature
+    subprocess.call([pyinterp, '-B', '-m', 'pytest', '-v'], cwd=tests_dir)
