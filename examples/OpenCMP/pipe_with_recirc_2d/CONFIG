@@ -23,7 +23,6 @@ run                 = True
 t_span              = 0, 300
 points_per_pfr      = 2
 specie_names        = a
-;reactions_file_path = reactions
 initial_conditions  = a -> 0
 boundary_conditions = a: inlet -> 1
 

@@ -21,12 +21,6 @@ nonlinear_max_iterations = 3
 
 [TRANSIENT]
 transient = False
-scheme = adaptive two step
-time_range = 0, 5000
-dt = 1e-2
-dt_range = 1e-10, 1000
-dt_tolerance = relative -> 0
-               absolute -> 1e-3
 
 [VISUALIZATION]
 save_to_file = True
