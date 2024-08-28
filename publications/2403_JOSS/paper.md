@@ -87,6 +87,22 @@ For ``OpenFOAM``, two directories are required:
 
 The path to the solution directory is specified in the `OpenCCM` config, and the `constant` directory is assumed to be in the same parent folder. The `OpenCCM` software will create several output directories: `log/` which contains detailed debugging information (if enabled), `cache/` which contains intermediary files, and `output_ccm/` both simulation results of the compartmental model (in various user-specified formats) and `ParaView` files for visualization.
 
+A sample config file, `CONFIG`, which outlines the available parameters is included in the main directory.
+An excerpt of it, showing the compartmental modelling parameters, is shown below.
+Square brackets indicates values which have a default with the default provided inside the brackets.
+    
+    [COMPARTMENT MODELLING]
+    # Whether to use PFRs-in-series or a CSTR to model each compartment.
+    model                   = PFR
+    # Volumetric flow threshold through a single facet below which the flow is considered 0.
+    flow_threshold_facet    = [1e-15]
+    # Volumetric flow threshold through a surface below which the flow is considered 0.
+    flow_threshold          = [1e-15]
+    # Maximum allowable difference (in % of compartment volume) between connections for merging them to one location.
+    dist_threshold          = [5 / 100]
+    # Absolute tolerances for checking that conservation of mass for the liquid after the flow optimization is performed.
+    atol_opt                = [1e-2]
+
 # Reaction Configuration File
 
 The chemical reaction parser in `OpenCCM` reads and parses the reactions configuration files and can handle general reaction equations of the form,
@@ -108,6 +124,8 @@ with $k_f = 5e-2$ and $k_r = 2$, dimensionless numbers picked for demonstration 
     R2: 2
 
 where **R1** and **R2** are the reaction *identifiers* for the forward and reverse reactions, respectively.
+
+An example reaction config file, `CONFIG_REACTIONS` is provided in the main directory. 
 
 # Examples of Usage
 
