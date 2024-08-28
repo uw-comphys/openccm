@@ -1,8 +1,8 @@
 # Instructions
 1. This example requires OpenFOAM 12, make sure it's installed.
-2. The example includes the steady state velocity profile inside `0/`. 
-   You may rerun it with different parameters by following the instructions below. If you don't wish to, go to step 13.
-   If you wish to change mesh density, open the .geo file in gmsh, make your desired changes, and export as a .msh.
+2. The example includes the steady state velocity profile inside `0/`.
+   If you wish to use it, go directly to step 13.
+   Otherwise, if you wish to change the mesh resolution or any simulation parameters, keep reading the steps in order.
 3. Convert to OpenFOAM format using `gmshToFoam` command in the terminal.
 4. Open the `boundary` file inside the `constant` folder and change the type for each of the physical surfaces as follows:
 For running this simulation in your system you have to follow these steps:
