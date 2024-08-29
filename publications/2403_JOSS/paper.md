@@ -34,7 +34,7 @@ bibliography: paper.bib
 
 `OpenCCM` is a compartmental modelling [@Jourdan2019] software package which is based on recently-developed fully automated flow alignment compartmentalization methods [@Vasile2024]. It is primarily intended for large-scale flow-based processes where there is weak coupling between composition changes, e.g. through (bio)chemical reactions, and convective mass transport in the system. Compartmental modelling is an important approach used to developed reduced-order models [@Chinesta2017] [@Benner2020] using a priori knowledge of process hydrodynamics [@Jourdan2019]. Compartmental modelling methods, such as those implemented in `OpenCCM`, enable simulations of these processes to be performed with far less computational complexity while still capturing the key aspects of their performance.
 
-`OpenCCM` integrates with two multiphysics simulation software packages, `OpenCMP` [@Monte2022] and `OpenFOAM` [@OpenFOAM], allowing for ease of transferring simulation data for compartmentalization. Additionally, it provides users with built-in functionality for calculating residence times, exporting to transfer data to simulation software, and for exporting results for visualization using `ParaView` [@Paraview]. Post-processing methods are included for mapping simulation results from compartment domains to the original simulation domain, useful for both visualization purposes and for further simulations in other software (e.g. multi-scale modelling).
+`OpenCCM` integrates with two multiphysics simulation software packages, `OpenCMP` [@Monte2022] and `OpenFOAM` [@greenshields2024], allowing for ease of transferring simulation data for compartmentalization. Additionally, it provides users with built-in functionality for calculating residence times, exporting to transfer data to simulation software, and for exporting results for visualization using `ParaView` [@Paraview]. Post-processing methods are included for mapping simulation results from compartment domains to the original simulation domain, useful for both visualization purposes and for further simulations in other software (e.g. multi-scale modelling).
 
 
 # Statement of Need
@@ -50,22 +50,27 @@ The overall aim of `OpenCCM` is to fill this need for an open-source compartment
 
 # Features
 
-| Feature                 | Description                                                                         |
+| **FEATURE**             | **DESCRIPTION**                                                                     |
 |-------------------------|-------------------------------------------------------------------------------------|
-| Model support           | Accepts `OpenCMP` [@Monte2022] and `OpenFOAM` [@OpenFOAM] results                   |
+| Model support           | Accepts `OpenCMP` [@Monte2022] and `OpenFOAM` [@greenshields2024] results           |
+|-------------------------| ------------------------------------------------------------------------------------- |
 | Compartmentalization    | Single-phase flow-based compartment identification                                  |
-| Compartmental Modelling | PFR-in-series-based model                                                           |
-|                         | Previous SotA CSTR-based models                                                     |
+|-------------------------| ------------------------------------------------------------------------------------- |
+| Compartmental Modelling | Plug Flow Reactors (PFRs)-in-series-based model                                     |
+|                         | Previous state-of-the-art Continous Stirred-tank reactor (CSTR)-based models        |
+|-------------------------| ------------------------------------------------------------------------------------- |
 | CM Simulations          | Linear, non-linear, and reversible arbitrary reactions.                             |
 |                         | 1st Order upwinding finite-difference-based                                         |
 |                         | Adaptive time-stepping                                                              |
+|-------------------------| ------------------------------------------------------------------------------------- |
 | Post-Processing         | Residence time distribution                                                         |
+|-------------------------| ------------------------------------------------------------------------------------- |
 | Output                  | Intermediary mesh format                                                            |
 |                         | Labeled compartments in `Paraview` format                                           |
 |                         | Concentrations from CM simulations in both `Paraview` and simulation package format |
+|-------------------------| ------------------------------------------------------------------------------------- |
 | Performance             | Multi-threading                                                                     |
 |                         | Caching of intermediary results to speed-up subsequent runs                         |
-
 
 # User Interface
 
@@ -82,17 +87,33 @@ For ``OpenFOAM``, two directories are required:
 
 The path to the solution directory is specified in the `OpenCCM` config, and the `constant` directory is assumed to be in the same parent folder. The `OpenCCM` software will create several output directories: `log/` which contains detailed debugging information (if enabled), `cache/` which contains intermediary files, and `output_ccm/` both simulation results of the compartmental model (in various user-specified formats) and `ParaView` files for visualization.
 
+A sample config file, `CONFIG`, which outlines the available parameters is included in the main directory.
+An excerpt of it, showing the compartmental modelling parameters, is shown below.
+Square brackets indicates values which have a default with the default provided inside the brackets.
+    
+    [COMPARTMENT MODELLING]
+    # Whether to use PFRs-in-series or a CSTR to model each compartment.
+    model                   = PFR
+    # Volumetric flow threshold through a single facet below which the flow is considered 0.
+    flow_threshold_facet    = [1e-15]
+    # Volumetric flow threshold through a surface below which the flow is considered 0.
+    flow_threshold          = [1e-15]
+    # Maximum allowable difference (in % of compartment volume) between connections for merging them to one location.
+    dist_threshold          = [5 / 100]
+    # Absolute tolerances for checking that conservation of mass for the liquid after the flow optimization is performed.
+    atol_opt                = [1e-2]
+
 # Reaction Configuration File
 
 The chemical reaction parser in `OpenCCM` reads and parses the reactions configuration files and can handle general reaction equations of the form,
 
 `aA + bB + [...] -> cC + dD + [...]`
 
-with associated numeric rate constants. It intentionally does not support the standard `<->` symbol for reversible chemical reactions, so that each independent reaction has an explicit rate constant clearly defined in the same file. Therefore, a reversible reaction must be written as two independent forward reactions (with separate rate constants). Each specie *label* must solely contain letter characters, e.g. `O` instead of `O2` for oxygen. Kinetic rate constants must be expressed as positive real numbers in standard or scientific notation. Additionally, each reaction/rate pair must also have a unique *identifier* (i.e. R1, R2). For example, take the reversible reaction,
+with associated numeric rate constants. It intentionally does not support the standard `<->` symbol for reversible chemical reactions, so that each independent reaction has its rate constant explicit defined. Therefore, a reversible reaction must be written as two independent forward reactions, each with its own rate constants. Each species *label* can contain letter and numbers, but cannot contain brackets "(" or ")" or special characters, e.g. "+", "-", "^", etc. Kinetic rate constants must be expressed as positive real numbers in standard or scientific notation. Additionally, each reaction/rate pair must have a unique *identifier* (i.e. R1, R2). For example, take the reversible reaction,
 
-$$2NaCl + CaCO3 <-> Na2CO3 + CaCl2$$
+$$2\textrm{NaCl} + \textrm{CaCO}_3 \Leftrightarrow \textrm{Na}_2\textrm{CO}_3 + \textrm{CaCl}_2$$
 
-with `k_f = 5e-2` and `k_r = 2` the species must first be redefined in simple terms in agreement with the reactions parser, i.e. a = NaCl, b = CaCO3, c = Na2CO3, and d = CaCl2. A configuration file for this reversible reaction may then be:
+with $k_f = 5e-2$ and $k_r = 2$, dimensionless numbers picked for demonstration purposes. A configuration file for this reversible reaction may then be:
 
     [REACTIONS]
     R1: 2NaCl   + CaCO3 ->  Na2CO3 + CaCl2
@@ -102,11 +123,13 @@ with `k_f = 5e-2` and `k_r = 2` the species must first be redefined in simple te
     R1: 5e-2
     R2: 2
 
-where **R1** and **R2** are the reaction *identifiers* for the forward and reverse reactions respectively.
+where **R1** and **R2** are the reaction *identifiers* for the forward and reverse reactions, respectively.
+
+An example reaction config file, `CONFIG_REACTIONS` is provided in the main directory. 
 
 # Examples of Usage
 
-Several examples are provided in the `OpenCCM` documentation which demonstrate the usage of both `OpenCMP` and `OpenFOAM` simulation flow information for compartmentalization. One example uses the geometry from [@Vasile2024] and shows how to execute the needed CFD simulation for flow information (both using `OpenCMP` and `OpenFOAM`), create/visualize the compartmental model results, and compare the predicted RTD  to the reference result directly from CFD simulation.
+Several examples are provided in the `OpenCCM` documentation which demonstrate the usage of both `OpenCMP` and `OpenFOAM` simulation flow information for compartmentalization. One example, inside `examples/OpenCMP/pipe_with_recird_2d`, uses the geometry from [@Vasile2024] and shows how to execute the needed CFD simulation for flow information (both using `OpenCMP` and `OpenFOAM`), create/visualize the compartmental model results, and compare the predicted RTD  to the reference result directly from CFD simulation.
 
 For this illustrative example, the steady-state hydrodynamic flow-profile is obtained by running the `OpenCMP` simulation through the `run_OpenCMP.py` script in the folder. The resulting flow profile was opened in `ParaView` and the line integral convolution of the velocity field is shown below, colored by velocity magnitude.
 
@@ -130,20 +153,20 @@ The Residence Time Distribution (RTD) curve for both the CFD and Compartmental M
 
 Finally, to demonstrate how to use the reaction system we will implement the reversible reaction system mentioned above:
 
-$$2NaCl + CaCO3 <-> Na2CO3 + CaCl2$$
+$$2\textrm{NaCl} + \textrm{CaCO}_3 \Leftrightarrow \textrm{Na}_2\textrm{CO}_3 + \textrm{CaCl}_2$$
 
-with `k_f = 5e-2` and `k_r = 2` with a = NaCl, b = CaCO3, c = Na2CO3, and d = CaCl2. The initial conditions are 0 for all species and the boundary conditions at the inlet are `[NaCl] = [CaCO3] = 1` and `[Na2CO3] = [CaCl2] = 0`. The equations and conditions have already been specified, enable the reactions by uncommenting the `;reactions_file_path = reactions` line by removing the ';' at the start of the line. Note that when you re-run the compartmentalization it will finish much faster than the first time, this is because the compartmental model does not have to be re-created, instead it is loaded from disk.
+with $k_f = 5e-2$ and $k_r = 2$ as the dimensionless forward and backwards rate constants whose values were picked for demonstration purposes. All species start at an initial concentration of $0$, dimensionless concentration, and have inlet boundary conditions of $[\textrm{NaCl}] = [\textrm{CaCO}_3] = 1$ and $[\textrm{Na}_2\textrm{CO}_3] = [\textrm{CaCl}_2] = 0$, again both dimensionless concentration. The equations and conditions have already been specified, and the simulation can be run by using the `run_compartment_w_rxn.py` script. Note that when you re-run this script it will finish much faster than the first time since the compartmental model is loaded from disk rather than having to be re-created each time.
 
 To analyze the results, the equilibrium values for this reversible system are calculated as follows:
 
-$$ k_f [a]^2[b] = k_r [c][d] $$
-$$ \frac{k_f}{k_r} = \frac{[c][d]}{[a]^2[b]} $$
-$$ \frac{5 \times 10^{-2}}{2} = \frac{(x)(x)}{x(1-2x)^2} $$
+$$ k_f [\textrm{NaCl}]^2[\textrm{CaCO}_3] = k_r [\textrm{Na}_2\textrm{CO}_3][\textrm{CaCl}_2] $$
+$$ \frac{k_f}{k_r} = \frac{[\textrm{Na}_2\textrm{CO}_3][\textrm{CaCl}_2]}{[\textrm{NaCl}]^2[\textrm{CaCO}_3]} $$
+$$ \frac{5 \times 10^{-2}}{2} = \frac{(x)(x)}{(1-2x)^2(1-x)} $$
 $$ x \approx 0.1147 $$
 
-where `x` is the number of moles produced of each product.
+where `x` is the change in $\textrm{CaCO}_3$, in dimensionless units.
 
-The expected equilibrium concentrations for the four species are: `[NaCl]_{ss} = 0.7706`, `[CaCO3] = 0.8853`, `[Na2CO3] = 0.1147`, and `[CaCl2] = 0.1147`. Based on the figures below, and from opening up the results, it can be seen that these steady state values are obtained at the outlet of the reactor.
+The expected equilibrium concentrations for the four species are: $[NaCl] = 0.7706$, $[CaCO_3] = 0.8853$, $[Na_2CO_3] = 0.1147$, and $[CaCl_2] = 0.1147$. Based on the figures below, and from opening up the results, it can be seen that these steady state values are obtained at the outlet of the reactor.
 
 ![Input/Output Concentrations for 'NaCl'.](images/system_response_a.pdf){ width=49% } ![Input/Output Concentrations for 'CaCO3'.](images/system_response_b.pdf){ width=49% }
 ![Input/Output Concentrations for 'Na2CO3'.](images/system_response_c.pdf){ width=49% } ![Input/Output Concentrations for 'CaCl2'.](images/system_response_d.pdf){ width=49% }
