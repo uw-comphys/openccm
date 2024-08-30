@@ -1,19 +1,25 @@
 ########################################################################################################################
-# Copyright 2024 the authors (see AUTHORS file for full list).
-#
-#                                                                                                                    #
-# This file is part of OpenCCM.
-#
-#                                                                                                                    #
-# OpenCCM is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public
-#
-# License as published by the Free Software Foundation, either version 2.1 of the License, or (at your option) any  later version.                                                                                                       #
-#                                                                                                                    #
-# OpenCCM is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.                                                                                                             #
-#                                                                                                                     #
+# Copyright 2024 the authors (see AUTHORS file for full list).                                                         #
+#                                                                                                                      #
+#                                                                                                                      #
+# This file is part of OpenCCM.                                                                                        #
+#                                                                                                                      #
+#                                                                                                                      #
+# OpenCCM is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public  #
+# License as published by the Free Software Foundation,either version 2.1 of the License, or (at your option)          #
+# any later version.                                                                                                   #
+#                                                                                                                      #
+# OpenCCM is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied        #
+# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.                                                     #
+# See the GNU Lesser General Public License for more details.                                                          #
+#                                                                                                                      #
 # You should have received a copy of the GNU Lesser General Public License along with OpenCCM. If not, see             #
 # <https://www.gnu.org/licenses/>.                                                                                     #
 ########################################################################################################################
+
+r"""
+All functions related to identifying compartments as regions of unidirectional flow.
+"""
 
 from typing import Dict, List, Set, Tuple
 from collections import OrderedDict
@@ -43,22 +49,28 @@ def create_compartment_network(compartments:        Dict[int, Set[int]],
 
     Finally, the compartments are renumbered to the range [0, N) in a sequential order without gaps.
 
-    Args:
-        compartments:       A list of set. The ith set contains the indices of the elements belonging to the ith compartment.
-        mesh:               The mesh from which the compartments were built.
-        dir_vec:            Direction vector, NxD where N is the number of mesh elements and D the dimension of the mesh.
-        vel_vec:            Velocity vector, NxD where N is the number of mesh elements and D the dimension of the mesh.
-        config_parser:      The OpenCCM ConfigParser
+    Parameters
+    ----------
+    * compartments:         A list of sets. The ith set contains the indices of the elements belonging to the ith compartment.
+    * mesh:                 The mesh from which the compartments were built.
+    * dir_vec:              Direction vector, NxD where N is the number of mesh elements and D the dimension of the mesh.
+    * flows_and_upwind:     2D object array indexed by facet ID.
+                            - 1st column is volumetric flowrate through facet.
+                            - 2nd column is a flag indicating which of a facet's elements are upwind of it.
+                                - 0, and 1 represent the index into mesh.facet_elements[facet]
+                                - -1 is used for boundary elements to represent
+    * config_parser:        The OpenCCM ConfigParser
 
-    Returns:
-        compartments:           Same as input, except renumbered and modified after merging small compartments
-        compartment_network:    A dictionary whose keys are the compartment index and whose values are dictionary.
-                                    For each of those dictionaries, the keys are the index of a neighboring compartment
-                                    and the values are another dictionary.
-                                        For each of those dictionaries, the keys are the index of the bounding facet between the two compartments,
-                                        and the values are Tuples.
-                                            - The 1st is the index of the element upwind of that boundary facet.
-                                            - The 2nd is the outward facing unit normal for that boundary facet.
+    Returns
+    -------
+    * compartments:         Same as input, except renumbered and modified after merging small compartments
+    * compartment_network:  A dictionary whose keys are the compartment index and whose values are dictionary.
+                                For each of those dictionaries, the keys are the index of a neighboring compartment
+                                and the values are another dictionary.
+                                    For each of those dictionaries, the keys are the index of the bounding facet between the two compartments,
+                                    and the values are Tuples.
+                                        - The 1st is the index of the element upwind of that boundary facet.
+                                        - The 2nd is the outward facing unit normal for that boundary facet.
     """
     print("Creating compartment network")
 
@@ -192,15 +204,18 @@ def renumber_compartments(compartments:         Dict[int, Set[int]],
                           compartment_network:  Dict[int, Dict[int, Dict[int, int]]]) \
         -> None:
     """
-    This function re-numbers the compartments from their current numbering, which can include holes for any compartments
+    Re-number compartments from their current numbering, which can include holes for any compartments
     removed or merged, to [0, N-1] inclusive of both ends, where N is the number of compartments.
 
-    Args:
-        compartments:           See documentation in {calculate_compartments}
-        compartment_network:    See documentation in {create_compartment_network}
-    Returns:
-        compartments:           Same data as the input, except with the compartments renumbered
-        compartment_network:    Same data as the input, except with the compartments renumbered
+    Parameters
+    ----------
+    * compartments:           See documentation in `calculate_compartments`
+    * compartment_network:    See documentation in `create_compartment_network`
+
+    Returns
+    -------
+    * compartments:           Same data as the input, except with the compartments renumbered
+    * compartment_network:    Same data as the input, except with the compartments renumbered
     """
     print("Renumbering compartments")
 
@@ -269,15 +284,22 @@ def calculate_compartments(dir_vec:             np.ndarray,
     Wrapper for _calculate_compartments to allow for numba
     This function takes the elements of a mesh and groups them together into compartments.
 
-    Args:
-        dir_vec:            The numpy array containing the direction vector.
-        mesh:               The CMesh to compartmentalize
-        config_parser:      ConfigParser to use.
+    Parameters
+    ----------
+    * dir_vec:          The numpy array containing the direction vector.
+    * flows_and_upwind: 2D object array indexed by facet ID.
+                        - 1st column is volumetric flowrate through facet.
+                        - 2nd column is a flag indicating which of a facet's elements are upwind of it.
+                            - 0, and 1 represent the index into mesh.facet_elements[facet]
+                            - -1 is used for boundary elements to represent
+    * mesh:             The CMesh to compartmentalize
+    * config_parser:    ConfigParser to use.
 
-    Returns:
-        compartments:                       A dictionary. Keys are compartment ids (ints) and the corresponding value
-                                            is a set containing the facet id (int) of each facet in this compartment.
-        compartment_of_removed_elements:    A set containing the facet id of all faces which had a 0 velocity in them.
+    Returns
+    -------
+    * compartments:                     A dictionary. Keys are compartment ids (ints) and the corresponding value
+                                        is a set containing the facet id (int) of each facet in this compartment.
+    * compartment_of_removed_elements:  A set containing the facet id of all faces which had a 0 velocity in them.
     """
     print("Calculating compartments")
 
@@ -336,18 +358,23 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
     - 2D: Represents area.
     - 3D: Represents volume.
 
-    Args:
-        compartments:           Dictionary representation of a compartment.
-                                Keys are compartment ID, values are sets of element IDs.
-        compartment_network:    A dictionary representation of the network.
-        mesh:                   The mesh.
-        dir_vec:                Array indexed by element ID for the direction vector.
-        flows_and_upwind:       2D object array indexed by facet ID.
-                                - 1st column is volumetric flowrate through facet.
-                                - 2nd column is a flag indicating which of a facet's elements are upwind of it.
-                                    - 0, and 1 represent the index into mesh.facet_elements[facet]
-                                    - -1 is used for boundary elements to represent
-        config_parser:          ConfigParser to use.
+    Parameters
+    ----------
+    * compartments:         Dictionary representation of a compartment.
+                            Keys are compartment ID, values are sets of element IDs.
+    * compartment_network:  A dictionary representation of the network.
+    * mesh:                 The mesh.
+    * dir_vec:              Array indexed by element ID for the direction vector.
+    * flows_and_upwind:     2D object array indexed by facet ID.
+                            - 1st column is volumetric flowrate through facet.
+                            - 2nd column is a flag indicating which of a facet's elements are upwind of it.
+                                - 0, and 1 represent the index into mesh.facet_elements[facet]
+                                - -1 is used for boundary elements to represent
+    * config_parser:        ConfigParser to use.
+
+    Returns
+    -------
+    - Nothing, the objects are modified in place.
     """
     print("Merging compartments")
 
@@ -389,7 +416,7 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
         -> Tuple[
             Dict[int, Dict[int, int]],
             Dict[int, float]]:
-
+        """ Utility wrapping function for calculating the connections and flowrates through the connections """
         if model == 'cstr':
             connection_pairing, volumetric_flows = connect_cstr_compartments(compartment_network, mesh, flows_and_upwind, final, config_parser)
         elif model == 'pfr':
@@ -413,6 +440,10 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
         # At this point it is possible for compartments to have a single connection.
         # Only after the network has been built is it guaranteed that each compartment has at least 2 connections.
         def merge_illformed_compartments():
+            """
+            Helper function for merging all compartments which have only one connection or all connections of the same
+            type, i.e. all inlets or outlets.
+            """
             compartments_to_merge = set()
             for id_compartment, connections in connection_pairing.items():
                 if len(connections) <= 1:
@@ -483,20 +514,23 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
     print("Done merging compartments")
 
 
-def find_best_merge_target(id_to_merge, connections, compartment_avg_directions):
+def find_best_merge_target(id_to_merge: int, connections: Dict[int, int], compartment_avg_directions: np.ndarray):
     """
     Identify which of id_to_merge's neighbours it should be merged into.
     Criteria used:
-        1. Compartment should be downstream of id_to_merge into
-        2. Compartment with the closest average direction vector is chosen.
+    1. Compartment should be downstream of id_to_merge into
+    2. Compartment with the closest average direction vector is chosen.
 
-    Args:
-        id_to_merge:                    ID of the compartment to merge.
-        connections:                    The connections
-        compartment_avg_directions:
+    Parameters
+    ----------
+    * id_to_merge:                  ID of the compartment to merge.
+    * connections:                  Mapping between the connection ID and the compartment on the other side for each
+                                    connection of this compartment.
+    * compartment_avg_directions:   The average direction vector in each compartment, indexed by compartment ID.
 
-    Returns:
-        id_merge_into:                   ID of the compartment to merge into.
+    Returns
+    -------
+    * id_merge_into: ID of the compartment to merge into.
     """
     compartment_value = compartment_avg_directions[id_to_merge]
 
@@ -518,12 +552,39 @@ def find_best_merge_target(id_to_merge, connections, compartment_avg_directions)
     return id_merge_into
 
 
-def all_connections_of_same_type(network: Dict[int, int]):
-    keys = list(network.keys())
+def all_connections_of_same_type(connections_for_compartment: Dict[int, int]) -> bool:
+    """
+    Helper function to identify if all connections of a given compartment are of the same type (i.e. inlets/outlets).
+
+    Parameters
+    ----------
+    * connections_for_compartment:  Mapping between connection ID and the compartment on the other side.
+
+    Returns
+    -------
+    * Bool indicating if all connections of the given
+    """
+    keys = list(connections_for_compartment.keys())
     return all((x >= 0) == (keys[0] >= 0) for x in keys)
 
 
-def needs_merging(compartment: int, connection_pairing, compartment_network) -> bool:
+def needs_merging(compartment:          int,
+                  connection_pairing:   Dict[int, Dict[int, int]],
+                  compartment_network:  Dict[int, Dict[int, Dict[int, int]]]) -> bool:
+    """
+    Helper function to check if a given compartment needs merging.
+
+    Parameters
+    ----------
+    * compartment:          ID of the compartment to check.
+    * connection_pairing:   Mapping between each compartment's ID and a mapping between connection ID
+                            and compartment on the other side.
+    * compartment_network:  Dictionary representation of the compartment network.
+
+    Returns
+    -------
+    * Bool indicating if all connections of the given
+    """
     return (compartment in connection_pairing                                       # Still exists
             and (len(connection_pairing[compartment]) == 1                          # Only one connection
                  or all_connections_of_same_type(connection_pairing[compartment])   # All inlets/outlets
@@ -542,25 +603,30 @@ def _calculate_compartments(elements_not_in_a_compartment:  Set[int],
 
     Iterating one element at a time, group neighbouring elements into compartments.
     The algorith works as follows:
-        1. (Arbitrarily) pick a seed element from the list of seed elements
-            - This list is original the list of all elements which share a facet with certain user-specified boundaries
-        2. Find all neighbours not yet in a compartment
-            2.1 If there are no neighbours go to 6.
-        3. Compare the alignment of the seed element to that of all the compartment's neighbours
-            3.1 If there are no neighbours above the specified threshold go to 6.
-        4. Compare the angle between the normal of the surface between each passing neighbour
-           and the director of the cell inside the compartment on the other side
-            4.1 If there are no neighbours above the specified threshold go to 6.
-        5. Add the element from 4 to this compartment, and go back to 2.
-        6. The compartment is done, save it and go back to 1.
+    1. (Arbitrarily) pick a seed element from the list of seed elements
+        - This list is original the list of all elements which share a facet with certain user-specified boundaries
+    2. Find all neighbours not yet in a compartment
+        2.1 If there are no neighbours go to 6.
+    3. Compare the alignment of the seed element to that of all the compartment's neighbours
+        3.1 If there are no neighbours above the specified threshold go to 6.
+    4. Compare the angle between the normal of the surface between each passing neighbour
+       and the director of the cell inside the compartment on the other side
+        4.1 If there are no neighbours above the specified threshold go to 6.
+    5. Add the element from 4 to this compartment, and go back to 2.
+    6. The compartment is done, save it and go back to 1.
 
-    Args:
-        elements_not_in_a_compartment:  The set of elements which are available for compartmentalization.
-        n_vec:                          The direction vector, NxD where N is the number of elements in the mesh
-                                        and D the dimension of the mesh.
-        mesh:                           The mesh on which the compartmentalization is occurring.
-        seeds:                          OrderedDict of element IDs used as seeds.
-        config_parser:                  ConfigParser from which to get parameters.
+    Parameters
+    ----------
+    * elements_not_in_a_compartment:  The set of elements which are available for compartmentalization.
+    * n_vec:                          The direction vector, NxD where N is the number of elements in the mesh
+                                      and D the dimension of the mesh.
+    * mesh:                           The mesh on which the compartmentalization is occurring.
+    * seeds:                          OrderedDict of element IDs used as seeds.
+    * config_parser:                  ConfigParser from which to get parameters.
+
+    Returns
+    -------
+    * compartments: Set of element IDs that make up each compartment, indexed by compartment ID.
     """
     ####################################################################################################################
     # 0. Setup
@@ -695,21 +761,20 @@ def _remove_unwanted_elements(mesh: CMesh, dir_vec: np.ndarray) -> Tuple[Set[int
     Function to take in the mesh and remove unwanted elements from the element connectivity matrix, thus removing them
     from consideration.
 
-    NOTE: This function modifies the mesh object!
-
     Elements are removed if they meet any of the following criteria:
     1. Have a velocity magnitude of 0.
     2. Have any facet on a no-slip boundary condition
     3. Elements that end up with only one neighbouring element after the above criteria have been applied.
 
-    Args:
-        mesh:               The mesh to operate on.
-        dir_vec:            The velocity direction vector for the mesh, indexed by element ID.
+    Parameters
+    ----------
+    * mesh:     The mesh to operate on.
+    * dir_vec:  The velocity direction vector for the mesh, indexed by element ID.
 
-    Returns:
-        removed_elements:   A set containing the IDs for removed elements.
-        valid_elements:     A set containing the IDs of the elements that are still valid for compartmentalization.
-
+    Returns
+    -------
+    * removed_elements:   A set containing the IDs for removed elements.
+    * valid_elements:     A set containing the IDs of the elements that are still valid for compartmentalization.
     """
     no_slip_facets = np.where(mesh.facet_to_bc_map == mesh.grouped_bcs.no_flux)[0]
 
@@ -797,12 +862,13 @@ def _merge_two_compartments(id_merge_into:              int,
     This process will iterate until all compartments connected to id_merge_into and id_to_merge have more than
     one neighbour.
 
-    Args:
-        id_merge_into:              The initial ID of the compartment to merge into.
-        id_to_merge:                The initial ID of the compartment to merge.
-        compartments:               Dictionary representation of a compartment.
+    Parameters
+    ----------
+    * id_merge_into:                The initial ID of the compartment to merge into.
+    * id_to_merge:                  The initial ID of the compartment to merge.
+    * compartments:                 Dictionary representation of a compartment.
                                     Keys are compartment ID, values are sets of element IDs.
-        compartment_network:        A dictionary representation of the compartments in the network.
+    * compartment_network:          A dictionary representation of the compartments in the network.
                                     Keys are compartment IDs, and whose values are dictionary.
                                         For each of those dictionaries, the keys are the index of a neighboring compartment
                                         and the values are another dictionary.
@@ -810,14 +876,18 @@ def _merge_two_compartments(id_merge_into:              int,
                                             between the two compartments, and the values Tuples.
                                                 - The 1st is the index of the element upwind of that boundary facet.
                                                 - The 2nd is the outward facing unit normal for that boundary facet.
-        compartment_sizes:          The size of each compartment, indexed by compartment ID.
-        connection_pairing:         Dictionary storing info about which other compartments a given compartment is connected to
+    * compartment_sizes:            The size of each compartment, indexed by compartment ID.
+    * connection_pairing:           Dictionary storing info about which other compartments a given compartment is connected to
                                     - First key is compartment ID
                                     - Values is a Dict[int, int]
                                         - Key is connection ID (positive inlet into this compartment, negative is outlet)
                                         - Value is the ID of the compartment on the other side
-        compartment_avg_directions: Average direction vector for each compartment, indexed by compartment ID.
-        dir_vec:                    Direction vector for each compartment, indexed by compartment ID.
+    * compartment_avg_directions:   Average direction vector for each compartment, indexed by compartment ID.
+    * dir_vec:                      Direction vector for each compartment, indexed by compartment ID.
+
+    Returns
+    -------
+    - Nothing. The objects are modified in-place.
     """
     def sign(x): return 1 if x > 0 else -1
 
@@ -940,24 +1010,26 @@ def _check_flow_requirement(element:            int,
 
     This algorithm uses the amount of flow in and out of the cell to make this decision.
     id_element is considered to have enough flow into/out of a compartment if the following two criteria are met:
-        1. The flow in/out of the cell across the facet shared with the compartment is at least (flow_threshold)%
-           of the total flow in/out of the id_element.
-        2. The flow in/out of the cell across the facet shared with the compartment is at least (flow_threshold)%
-           of the total flow in/out of A neighbouring face of id_element inside the compartment.
+    1. The flow in/out of the cell across the facet shared with the compartment is at least (flow_threshold)%
+       of the total flow in/out of the id_element.
+    2. The flow in/out of the cell across the facet shared with the compartment is at least (flow_threshold)%
+       of the total flow in/out of A neighbouring face of id_element inside the compartment.
 
-    Args:
-        element:            Integer representing the number (id) of the element that is being considered
-        compartment:        The compartment we wish to try to add id_element to.
-        flows_and_upwind:   2D object array indexed by facet ID.
-                            - 1st column is volumetric flowrate through facet.
-                            - 2nd column is a flag indicating which of a facet's elements are upwind of it.
-                                - 0, and 1 represent the index into mesh.facet_elements[facet]
-                                - -1 is used for boundary elements to represent
-        mesh:               The mesh, needed for finding neighbouring elements and facets
-        flow_threshold:     The minimum % of an element's total inflow/outflow needed over the connection.
+    Parameters
+    ----------
+    * element:          Integer representing the number (id) of the element that is being considered
+    * compartment:      The compartment we wish to try to add id_element to.
+    * flows_and_upwind: 2D object array indexed by facet ID.
+                        - 1st column is volumetric flowrate through facet.
+                        - 2nd column is a flag indicating which of a facet's elements are upwind of it.
+                            - 0, and 1 represent the index into mesh.facet_elements[facet]
+                            - -1 is used for boundary elements to represent
+    * mesh:             The mesh, needed for finding neighbouring elements and facets
+    * flow_threshold:   The minimum % of an element's total inflow/outflow needed over the connection.
 
-    Returns:
-        ~: Boolean indicating if id_element passed the flow requirement to be added to the compartment.
+    Returns
+    -------
+    * Bool indicating if id_element passed the flow requirement to be added to the compartment.
     """
     # Find the element(s) inside the compartment which are neighbours to neighbour_i and the face they have in common
 
@@ -1053,25 +1125,27 @@ def _calculate_compartment_bounds(compartment: set[int], id_compartment: int, me
     This function assumes that the mesh does NOT have hanging nodes.
 
     Entities that bound an element are shared by up two different elements.
-        - If it only has one element, then the facet is on the boundary of the mesh, and is therefore a bound of the compartment
-        - If only one of the elements is inside the compartment, then the facet is a bound for the compartment.
-        - If both of those elements are inside the compartment, then the facet is not a bound for the compartment.
+    - If it only has one element, then the facet is on the boundary of the mesh, and is therefore a bound of the compartment
+    - If only one of the elements is inside the compartment, then the facet is a bound for the compartment.
+    - If both of those elements are inside the compartment, then the facet is not a bound for the compartment.
 
-    Args:
-        compartment:                A set of integers representing the elements number in a compartment.
-        id_compartment:             The id of the compartment.
-        mesh:                       The mesh containing the compartment.
-        element_to_compartment_map: A dictionary mapping each element to the compartment it is in.
+    Parameters
+    ----------
+    * compartment:                A set of integers representing the elements number in a compartment.
+    * id_compartment:             The ID of the compartment.
+    * mesh:                       The mesh containing the compartment.
+    * element_to_compartment_map: A dictionary mapping each element to the compartment it is in.
 
-    Returns:
-        ~:  A dictionary whose keys are the bounding facet number and values a tuple of two integers.
-            The first integer of the tuple is the index of the element on this side of the bounding facet (i.e. inside the compartment).
-            The second integer of the tuple is the index of the element on the other side of the bounding facet (i.e. outside the compartment).
-            NOTE: A value of -1 is used for the second index of entities which are on the boundary of the mesh.
-            The type of these bounds depends on the dimension of the mesh:
-                1D: Bounds are points.
-                2D: Bounds are edges.
-                3D: Bounds are faces.
+    Returns
+    -------
+    * bounding_facets:  A dictionary whose keys are the bounding facet number and values a tuple of two integers.
+                        The first integer of the tuple is the index of the element on this side of the bounding facet (i.e. inside the compartment).
+                        The second integer of the tuple is the index of the element on the other side of the bounding facet (i.e. outside the compartment).
+                        NOTE: A value of -1 is used for the second index of entities which are on the boundary of the mesh.
+                        The type of these bounds depends on the dimension of the mesh:
+                        - 1D: Bounds are points.
+                        - 2D: Bounds are edges.
+                        - 3D: Bounds are faces.
     """
     # Indices of the bounding entities for the compartment
     bounding_facets: Dict[int, Tuple[int, int]] = dict()
@@ -1105,5 +1179,3 @@ def _calculate_compartment_bounds(compartment: set[int], id_compartment: int, me
                     pass
 
     return bounding_facets
-
-

@@ -104,7 +104,8 @@ $$ a(V, t) = e^{-kV/Q}H(t-V/Q) $$
 $$ b(V, t) = 2 H(t-V/Q) (1-e^{-kV/Q}) $$
 
 Simulations were performed in a PFR discretized at 21, 101, and 501 points in the volume domain. 
-Analytical and numerical (OpenCCM) results were compared at the inlet, midpoint, and outlet volume points. 
+Analytical and numerical (OpenCCM) results were compared at the inlet, midpoint, and outlet volume points.
+The comparison at the outlet for the different simulations are shown below.
 
 The solution vectors $sol^a$ (analytical) and $sol^n$ (OpenCCM) use the same specific timesteps given by the numerical solver.
 The error between these two solutions for a species computed at each timestep $i$ for $N$ total timesteps is a normalized absolute error:

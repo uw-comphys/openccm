@@ -1,19 +1,25 @@
 ########################################################################################################################
-# Copyright 2024 the authors (see AUTHORS file for full list).
-#
-#                                                                                                                    #
-# This file is part of OpenCCM.
-#
-#                                                                                                                    #
-# OpenCCM is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public
-#
-# License as published by the Free Software Foundation, either version 2.1 of the License, or (at your option) any  later version.                                                                                                       #
-#                                                                                                                    #
-# OpenCCM is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.                                                                                                             #
-#                                                                                                                     #
+# Copyright 2024 the authors (see AUTHORS file for full list).                                                         #
+#                                                                                                                      #
+#                                                                                                                      #
+# This file is part of OpenCCM.                                                                                        #
+#                                                                                                                      #
+#                                                                                                                      #
+# OpenCCM is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public  #
+# License as published by the Free Software Foundation,either version 2.1 of the License, or (at your option)          #
+# any later version.                                                                                                   #
+#                                                                                                                      #
+# OpenCCM is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied        #
+# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.                                                     #
+# See the GNU Lesser General Public License for more details.                                                          #
+#                                                                                                                      #
 # You should have received a copy of the GNU Lesser General Public License along with OpenCCM. If not, see             #
 # <https://www.gnu.org/licenses/>.                                                                                     #
 ########################################################################################################################
+
+r"""
+This file contains that modified ConfigParser along with any relevent helper functions.
+"""
 
 import configparser
 import ast
@@ -25,6 +31,7 @@ from os import cpu_count
 
 
 T = TypeVar('T', bool, str, int, float)
+"""Used only for type hints."""
 
 config_defaults: Dict = {
     'SETUP': {'num_cores': cpu_count()//2,
@@ -57,17 +64,33 @@ config_defaults: Dict = {
                         'subdivisions': 0,
                         'interpolant_order': 1},
 }
+"""
+Default values for the various options available in OpenCCM.
+If a default is used, OpenCCM outputs a message in the terminal.
+"""
 
 
 class ConfigParser(configparser.ConfigParser):
     """
-    A ConfigParser extended to have several useful functions added to it.
+    OpenCCM's modified ConfigParser extended to have several useful functions added to it.
     """
 
     def __init__(self, config_file_path: str) -> None:
+        """
+        Only initializer to use.
+
+        Parameters
+        ----------
+        config_file_path: The path to the config file to load, relative to run directory.
+        """
         super().__init__()
 
         self.need_to_update_paths = True
+        """
+        Boolean indicating whether the paths need to be updated.
+        Path are updated with `update_paths` which can be called manually or will be called automatically
+        at the top of `openccm.run.run`.
+        """
 
         if not isfile(config_file_path):
             raise FileNotFoundError('The given config file \"{}\" does not exist.'.format(config_file_path))
@@ -183,8 +206,11 @@ class ConfigParser(configparser.ConfigParser):
         """
         Find the highest numeric value from directory names.
 
-        Returns:
-            ~: The folder name corresponding to the largest time value, or None if no folder is found.
+        If none can be found then a ValueError is raised.
+
+        Returns
+        -------
+        * highest_name: The folder name corresponding to the largest time value.
         """
         directory_path = self['INPUT']['openfoam_sol_folder_path']
 
@@ -206,12 +232,14 @@ class ConfigParser(configparser.ConfigParser):
         """
         Function to load a list of parameters from the config file.
 
-        Args:
-            config_keys: The keys needed to access the parameters from the config file.
-            val_type: The type that each parameter is supposed to be.
+        Parameters
+        ----------
+        * config_keys:  The keys needed to access the parameters from the config file.
+        * val_type:     The type that each parameter is supposed to be, and to which it will be converted.
 
-        Returns:
-            List of the parameters from the config file in the type specified.
+        Returns
+        -------
+        * List of the parameters from the config file, converted to the specified type.
         """
         section, key = config_keys
         try:
@@ -232,12 +260,14 @@ class ConfigParser(configparser.ConfigParser):
         """
         Function to load a parameter from the config file.
 
-        Args:
-            config_keys: The keys needed to access the parameter from the config file.
-            val_type: The type that the parameter is supposed to be.
+        Parameters
+        ----------
+        * config_keys:  The keys needed to access the parameters from the config file.
+        * val_type:     The type that the parameter is supposed to be, and to which it will be converted.
 
-        Returns:
-            The parameter from the config file in the type specified.
+        Returns
+        -------
+        * The parameter from the config file converted to the specified type.
         """
         section, key = config_keys
         try:
@@ -254,11 +284,13 @@ class ConfigParser(configparser.ConfigParser):
         """
         Function to load and evaluate a Python expression from the config file.
 
-        Args:
-            config_keys: The keys needed to access the expression from the config file.
+        Parameters
+        ----------
+        * config_keys: The keys needed to access the expression from the config file.
 
-        Returns:
-            The evaluated result of the Python expression as a single value of the specified type,
+        Returns
+        -------
+        *   The evaluated result of the Python expression as a single value of the specified type,
             or a list/tuple of the specified type.
         """
         section, key = config_keys

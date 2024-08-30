@@ -1,19 +1,25 @@
 ########################################################################################################################
-# Copyright 2024 the authors (see AUTHORS file for full list).
-#
-#                                                                                                                    #
-# This file is part of OpenCCM.
-#
-#                                                                                                                    #
-# OpenCCM is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public
-#
-# License as published by the Free Software Foundation, either version 2.1 of the License, or (at your option) any  later version.                                                                                                       #
-#                                                                                                                    #
-# OpenCCM is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.                                                                                                             #
-#                                                                                                                     #
+# Copyright 2024 the authors (see AUTHORS file for full list).                                                         #
+#                                                                                                                      #
+#                                                                                                                      #
+# This file is part of OpenCCM.                                                                                        #
+#                                                                                                                      #
+#                                                                                                                      #
+# OpenCCM is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public  #
+# License as published by the Free Software Foundation,either version 2.1 of the License, or (at your option)          #
+# any later version.                                                                                                   #
+#                                                                                                                      #
+# OpenCCM is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied        #
+# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.                                                     #
+# See the GNU Lesser General Public License for more details.                                                          #
+#                                                                                                                      #
 # You should have received a copy of the GNU Lesser General Public License along with OpenCCM. If not, see             #
 # <https://www.gnu.org/licenses/>.                                                                                     #
 ########################################################################################################################
+
+r"""
+Functions related to outputting
+"""
 
 import os
 import shutil
@@ -49,17 +55,20 @@ internalField   nonuniform List<scalar>
 {}
 (
 """
+"""OpenFOAM header template used to output simulation results for visualization."""
 
 
 def create_element_label_gfu(mesh: 'ngsolve.Mesh') -> 'ngsolve.GridFunction':
     """
     Function which labels each element based on its ID.
 
-    Args:
-        mesh: The Mesh to label
+    Parameters
+    ----------
+    * mesh: The NGSolve Mesh to label.
 
-    Returns:
-        gfu: The GridFunction containing the labeled mesh elements.
+    Returns
+    -------
+    * gfu: The GridFunction containing the labeled mesh elements.
     """
     from ngsolve import L2, GridFunction
 
@@ -79,14 +88,16 @@ def create_compartment_label_gfu(mesh: 'ngsolve.Mesh', compartments: Dict[int, S
 
     Used for visualization.
 
-    Args:
-        mesh:           The mesh to label on
-        compartments:   A list of lists of elements. Each list is a compartment.
+    Parameters
+    ----------
+    * mesh:           The NGSolve mesh used to create the labels.
+    * compartments:   Mapping between compartment ID and the element IDs that belong to that compartment.
 
-    Returns:
-        gfu:            Gridfunction on a 0th order DG L2 space (i.e. 1 value per element) whose
-                        value on each element is the corresponds to the ID of the compartment to which
-                        that element belongs.
+    Returns
+    -------
+    * gfu:  Gridfunction on a 0th order DG L2 space (i.e. 1 value per element) whose
+            value on each element is the corresponds to the ID of the compartment to which
+            that element belongs.
     """
     from ngsolve import L2, GridFunction
 
@@ -108,9 +119,10 @@ def label_elements_openfoam(cmesh: CMesh, config_parser: ConfigParser) -> None:
     """
     Label each mesh element with its ID to help with debugging.
 
-    Args:
-        cmesh:          The CMesh to print out labels for
-        config_parser:  The OpenCCM ConfigParser.
+    Parameters
+    ----------
+    * cmesh:          The CMesh to print out labels for
+    * config_parser:  The OpenCCM ConfigParser.
     """
     # t_span has to be loaded as a float and then converted to str so that zero gets handled correctly.
     # Asking for t_span directly as str results in 0 being returned instead of 0.0, which will cause two zero folders
@@ -151,10 +163,11 @@ def label_compartments_openfoam(output_file_name: str, compartments: Dict[int, S
     Label each mesh element with the ID of the compartment it belongs to.
     A value of -1 is used to represent elements which are not added to any compartment (e.g. those on a no-slip BC).
 
-    Args:
-        output_file_name:   The filename to save the labeled mesh value into.
-        compartments:       The compartments to visualize.
-        config_parser:      The OpenCCM ConfigPararser.
+    Parameters
+    ----------
+    * output_file_name: The filename to save the labeled mesh value into.
+    * compartments:     The compartments to visualize.
+    * config_parser:    The OpenCCM ConfigPararser.
     """
     # t_span has to be loaded as a float and then converted to str so that zero gets handled correctly.
     # Asking for t_span directly as str results in 0 being returned instead of 0.0, which will cause two zero folders
@@ -237,11 +250,12 @@ def cstrs_to_vtu_and_save_openfoam(
     Each mesh cell is labelled based on which compartment it was a part of.
     Cells which were not part of any compartment are labelled with -1.
 
-    Args:
-        system_results: The simulation results to visualize (concentrations, times, inlets mapping, outlets mapping).
-        compartments:   The compartments
-        config_parser:  The OpenCCM ConfigParser.
-        cmesh:          The CMesh from which the model and network were calculated.
+    Parameters
+    ----------
+    * system_results:   The simulation results to visualize (concentrations, times, inlets mapping, outlets mapping).
+    * compartments:     The compartments
+    * config_parser:    The OpenCCM ConfigParser.
+    * cmesh:            The CMesh from which the model and network were calculated.
     """
     print("Exporting simulation visualization")
 
@@ -336,11 +350,12 @@ def cstrs_to_vtu_and_save_opencmp(
     Each mesh cell is labelled based on which compartment it was a part of.
     Cells which were not part of any compartment are labelled with NaN.
 
-    Args:
-        system_results: Tuple containing the results of the simulation.
-        compartments:   Lookup between compartment ID and the ID of the elements making it up.
-        config_parser:  OpenCCM ConfigParser used for generating the compartments and running the simulation.
-        mesh:           Mesh from which the compartment network was generated and onto which to project results.
+    Parameters
+    ----------
+    * system_results:   Tuple containing the results of the simulation.
+    * compartments:     Lookup between compartment ID and the ID of the elements making it up.
+    * config_parser:    OpenCCM ConfigParser used for generating the compartments and running the simulation.
+    * mesh:             Mesh from which the compartment network was generated and onto which to project results.
     """
     print("Exporting simulation visualization")
     from ngsolve import L2, GridFunction, VTKOutput
@@ -406,19 +421,21 @@ def pfrs_to_vtu_and_save_opencmp(system_results:    Tuple[
                                  compartments:      Dict[int, Set[int]],
                                  config_parser:     ConfigParser,
                                  mesh:              'ngsolve.Mesh',
-                                 n_vec: np.ndarray) -> None:
+                                 n_vec:             np.ndarray
+                                 ) -> None:
     """
     Takes a time series from running a simulation on the compartment network and outputs it to native OpenFOAM format.
     Each mesh cell is labelled based on which compartment it was a part of.
     Cells which were not part of any compartment are labelled with NaN.
 
-    Args:
-        system_results: Tuple containing the results of the simulation.
-        pfr_network:    The PFR network on which the simulation was run.
-        compartments:   Lookup between compartment ID and the ID of the elements making it up.
-        config_parser:  OpenCCM ConfigParser used for generating the compartments and running the simulation.
-        mesh:           NGSolve ,esh from which the compartment network was generated and onto which to project results.
-        n_vec:          Direction vector over the mesh, indexed by element id.
+    Parameters
+    ----------
+    * system_results:   Tuple containing the results of the simulation.
+    * pfr_network:      The PFR network on which the simulation was run.
+    * compartments:     Lookup between compartment ID and the ID of the elements making it up.
+    * config_parser:    OpenCCM ConfigParser used for generating the compartments and running the simulation.
+    * mesh:             NGSolve ,esh from which the compartment network was generated and onto which to project results.
+    * n_vec:            Direction vector over the mesh, indexed by element id.
     """
     print("Exporting simulation visualization")
     from ngsolve import L2, GridFunction
@@ -556,30 +573,32 @@ def _pfr_vtu_parallel_runner(
     """
     Wrapper function used to perform the projection and exporting to VTU in parallel.
 
-    Args:
-        y:                      The (num_species, num_points) vector of simulated values for the given time.
-        t:                      The time corresponding to y, used for the file name and for the VTU entry.
-        gfu:                    Final GridFunction used for output.
-        gfu_tmp:                Temporary GridFrunction used as a buffer in order to sample the interpolant only over
+    Parameters
+    ----------
+    * y:                        The (num_species, num_points) vector of simulated values for the given time.
+    * t:                        The time corresponding to y, used for the file name and for the VTU entry.
+    * gfu:                      Final GridFunction used for output.
+    * gfu_tmp:                  Temporary GridFrunction used as a buffer in order to sample the interpolant only over
                                 mesh elements which are part of the compartment.
-        mesh:                   The NGSolve mesh object, needed by VTKOutput
-        compartment_to_pfr_map: Mapping from compartment ID to PFR ID(s).
-        compartments:           The compartments from which the PFR network was created.
-        n_avg_compartment:      Average direction vector for each compartment, indexed by compartment ID.
-        distance_of_point_i:    The distance of each discretization point, in volume %,
+    * mesh:                     The NGSolve mesh object, needed by VTKOutput
+    * compartment_to_pfr_map:   Mapping from compartment ID to PFR ID(s).
+    * compartments:             The compartments from which the PFR network was created.
+    * n_avg_compartment:        Average direction vector for each compartment, indexed by compartment ID.
+    * distance_of_point_i:      The distance of each discretization point, in volume %,
                                 from the start of the COMPARTMENT it's a part of.
-        d_min_max:              All of the minimum and maximum distance values, indexed by compartment ID.
-        points_per_pfr:         The number of discretization points per PFR, assumed constant.
-        vtu_folder_path:        The path for the
-        output_folder_path:     The path for the VTU output folder, relative to the run direction.
-        subdivisions:           When converting the GridFunction into a VTU file, how many times each element should be
+    * d_min_max:                All of the minimum and maximum distance values, indexed by compartment ID.
+    * points_per_pfr:           The number of discretization points per PFR, assumed constant.
+    * vtu_folder_path:          The path for the
+    * output_folder_path:       The path for the VTU output folder, relative to the run direction.
+    * subdivisions:             When converting the GridFunction into a VTU file, how many times each element should be
                                 subdivided. E.g. with a value of 1, each triangle becomes 4 triangles.
-        species_names:          The name of each species used in the simulation, in the same order as was used
+    * species_names:            The name of each species used in the simulation, in the same order as was used
                                 in the simulation.
-        interpolant_order:      Order of the interpolant to use to interpolant between discretization points.
+    * interpolant_order:        Order of the interpolant to use to interpolant between discretization points.
 
-    Returns:
-        ~:
+    Returns
+    -------
+    * Entry to put into the .pvd file relating for the processed time step.
     """
     from ngsolve import VTKOutput
 
@@ -624,15 +643,17 @@ def _linear_interpolant(d: 'ngsolve.CoefficientFunction', d1: float, d2: float, 
     """
     1st order interpolating CoefficientFunction between (d1, v1) and (d2, v2) as a function of d.
 
-    Args:
-        d:  Distance CoefficientFunction.
-        d1: Left-side distance value.
-        d2: Right-side distance value.
-        v1: Value at d1.
-        v2: Value at d2
+    Parameters
+    ----------
+    * d:  Distance CoefficientFunction.
+    * d1: Left-side distance value.
+    * d2: Right-side distance value.
+    * v1: Value at d1.
+    * v2: Value at d2
 
-    Returns:
-        ~: Linear interpolating CoefficientFunction between (d1, v1) and (d2, v2) as a function of d.
+    Returns
+    -------
+    * Linear interpolating CoefficientFunction between (d1, v1) and (d2, v2) as a function of d.
     """
     return (v2 - v1) / (d2 - d1) * (d - d1) + v1
 
@@ -649,15 +670,17 @@ def _nearest_point_interpolant(d: 'ngsolve.CoefficientFunction', d1: float, d2: 
     |  v0  |  v1  |  v2  |
        ^1/3   ^1/3   ^1/3
 
-    Args:
-        d:  Distance CoefficientFunction.
-        d1: Left-side distance value.
-        d2: Right-side distance value.
-        v1: Value at d1.
-        v2: Value at d2
+    Parameters
+    ----------
+    * d:  Distance CoefficientFunction.
+    * d1: Left-side distance value.
+    * d2: Right-side distance value.
+    * v1: Value at d1.
+    * v2: Value at d2
 
-    Returns:
-        ~: Nearest neighbour interpolating CoefficientFunction between (d1, v1) and (d2, v2) as a function of d.
+    Returns
+    -------
+    * Nearest neighbour interpolating CoefficientFunction between (d1, v1) and (d2, v2) as a function of d.
     """
     from ngsolve import IfPos
 
@@ -679,7 +702,7 @@ def _nearest_point_interpolant(d: 'ngsolve.CoefficientFunction', d1: float, d2: 
     )
 
 
-def _piecewise_projected_results(basis_function:         Callable[[Any, float, float, float, float], 'ngsolve.CoefficientFunction'],
+def _piecewise_projected_results(basis_function:         Callable[['ngsolve.CoefficientFunction', float, float, float, float], 'ngsolve.CoefficientFunction'],
                                  d_min_max_compartment:  np.array,
                                  values:                 np.ndarray,
                                  n_avg:                  np.ndarray,
@@ -694,18 +717,20 @@ def _piecewise_projected_results(basis_function:         Callable[[Any, float, f
     This projection will inherently lead to discontinuities in the projection between PFRs.
     The value at the last node of PFR {i} and that at the first node of PFR {i+1} is almost always not equal.
 
-    Args:
-        basis_function:         The interpolant to use as the basis function.
-        d_min_max_compartment:  The minimum and maximum values from projecting positions vectors inside this compartment
+    Parameters
+    ----------
+    * basis_function:           The interpolant to use as the basis function.
+    * d_min_max_compartment:    The minimum and maximum values from projecting positions vectors inside this compartment
                                 onto the average direction of the compartment.
-        values:                 The 1D vector representing values from the simulation, indexed by discretization point ID.
-        n_avg:                  The average direction vector for the compartment.
-        distance_for_points:    The distance along the compartment
-        points_per_pfr:         The number of discretization points per pfr.
-        pfrs_in_compartment:    The IDs of the PFR(s) in this compartment.
+    * values:                   The 1D vector representing values from the simulation, indexed by discretization point ID.
+    * n_avg:                    The average direction vector for the compartment.
+    * distance_for_points:      The distance along the compartment
+    * points_per_pfr:           The number of discretization points per pfr.
+    * pfrs_in_compartment:      The IDs of the PFR(s) in this compartment.
 
-    Returns:
-        ~: The piecewise restricted function.
+    Returns
+    -------
+    * The piecewise restricted function.
     """
     from ngsolve import CoefficientFunction, x, y
 
@@ -755,12 +780,17 @@ def restrict_function_domain(f: 'ngsolve.CoefficientFunction', x: float, x_min: 
 
     Outside of this interval the function evaluates to 0.
 
-    Args:
-        f:          Function to evaluate.
-        x:          Position to evaluate it at.
-        x_min:      Minimum position to evaluate it at.
-        x_max:      Maximum position to evaluate it at.
-        both_ends:  If True, the interval is change to be inclusive of both ends, i.e. [x_min, x_max].
+    Parameters
+    ----------
+    * f:            Function to evaluate.
+    * x:            Position to evaluate it at.
+    * x_min:        Minimum position to evaluate it at.
+    * x_max:        Maximum position to evaluate it at.
+    * both_ends:    If True, the interval is change to be inclusive of both ends, i.e. [x_min, x_max].
+
+    Returns
+    -------
+    * The restricted version of `f`.
     """
     from ngsolve import IfPos
 

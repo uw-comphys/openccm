@@ -1,19 +1,26 @@
 ########################################################################################################################
-# Copyright 2024 the authors (see AUTHORS file for full list).
-#
-#                                                                                                                    #
-# This file is part of OpenCCM.
-#
-#                                                                                                                    #
-# OpenCCM is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public
-#
-# License as published by the Free Software Foundation, either version 2.1 of the License, or (at your option) any  later version.                                                                                                       #
-#                                                                                                                    #
-# OpenCCM is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.                                                                                                             #
-#                                                                                                                     #
+# Copyright 2024 the authors (see AUTHORS file for full list).                                                         #
+#                                                                                                                      #
+#                                                                                                                      #
+# This file is part of OpenCCM.                                                                                        #
+#                                                                                                                      #
+#                                                                                                                      #
+# OpenCCM is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public  #
+# License as published by the Free Software Foundation,either version 2.1 of the License, or (at your option)          #
+# any later version.                                                                                                   #
+#                                                                                                                      #
+# OpenCCM is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied        #
+# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.                                                     #
+# See the GNU Lesser General Public License for more details.                                                          #
+#                                                                                                                      #
 # You should have received a copy of the GNU Lesser General Public License along with OpenCCM. If not, see             #
 # <https://www.gnu.org/licenses/>.                                                                                     #
 ########################################################################################################################
+
+r"""
+Functions related to parsing user-provided reaction mechanisms and create a numba compiled function which is then used
+for the simulations.
+"""
 
 import inspect
 from string import ascii_lowercase as alphabet
@@ -27,13 +34,14 @@ import sympy as sp
 def generate_reaction_system(config_parser: 'ConfigParser', _ddt_reshape_shape: Optional[Tuple[int, int, int]]) -> None:
     """
     Main function that handles support for systems of chemical reactions. In order, this function:
-        (1) Performs an initial parsing of the reactions configuration file based on the two main headers, [REACTIONS] and [RATES].
-        (2) Parses reactions (and associated rates) in the same species order as they appear specified in the main configuration file.
-        (3) Creates a runtime-generated function containing the differential reaction system of equations for each specie which contributes to overall mass balance.
+    1. Performs an initial parsing of the reactions configuration file based on the two main headers, [REACTIONS] and [RATES].
+    2. Parses reactions (and associated rates) in the same species order as they appear specified in the main configuration file.
+    3. Creates a runtime-generated function containing the differential reaction system of equations for each specie which contributes to overall mass balance.
 
-    Args:
-        config_parser:      OpenCCM ConfigParser which contains configuration file information and location (i.e. relative path).
-        _ddt_reshape_shape: Shape needed by _ddt for PFR systems so that the inlet node does not have a reaction occurring at it. Used by `create_reaction_code`
+    Parameters
+    ----------
+    * config_parser:      OpenCCM ConfigParser which contains configuration file information and location (i.e. relative path).
+    * _ddt_reshape_shape: Shape needed by _ddt for PFR systems so that the inlet node does not have a reaction occurring at it. Used by `create_reaction_code`
     """
     input_file    = config_parser.get_item(['SIMULATION', 'reactions_file_path'], str)
     rxn_species   = config_parser.get_list(['SIMULATION', 'specie_names'],        str)
@@ -94,13 +102,16 @@ def organize_reactions_input(specie_order: List[str], all_reactions: List[str], 
     If successful, it breaks down the provided reactions and rates into an organized dictionary where each key is a reaction ID and the values are a length 2 list, where list is [reaction, rate].
     It also transforms the given chemical species into dummy specie names, which is much easier for the parser in parse_reactions() to handle. 
 
-    Args:
-        specie_order:       The ordered species as written in the main configuration file. Must match the same types of species present in reactions config file.
-        all_reactions:      The partially-parsed reactions as extracted from reactions configuration file.
-        all_rates:          The partially-parsed reaction rates as extracted from reactions configuration file.
+    Parameters
+    ----------
+    * specie_order:     The ordered species as written in the main configuration file.
+                        Must match the same types of species present in reactions config file.
+    * all_reactions:    The partially-parsed reactions as extracted from reactions configuration file.
+    * all_rates:        The partially-parsed reaction rates as extracted from reactions configuration file.
 
-    Returns:
-        rxn_book:           A dictionary that contains each reaction and their chemical species / rate constants.
+    Returns
+    -------
+    * rxn_book: A dictionary that contains each reaction and their chemical species / rate constants.
     """ 
 
     # Parse the reaction ids (i.e. R1, R2 etc) from the actual reactions and associated rates. These are needed for proper input checking.
@@ -171,29 +182,36 @@ def parse_reactions(specie_order: List[str], rxn_book: Dict[str, List[str]]) -> 
     Also enforces specific ordering of system of equations based on species in specie_order (i.e. from main config file).
     See the Notes section below for further description of expectations and limitations of the reactions configuration parser.
 
-    Args:
-        specie_order:       The ordered species as written in the main configuration file. Must match the same types of species present in reactions config file.
-        rxn_book:           A dictionary that contains each reaction and their chemical species / rate constants.
+    Notes
+    -----
+    -   The reaction parser only supports forward (written) reactions (i.e. use of ->).
+        Reversible reactions must be written as two independent reactions with their associated rate constants.
+    -   The reactions parser can parse the general reaction: aA1 + bB2 + [...] -> gG7 + hH8 + [...].
+    -   All chemical species can be alphanumeric with underscores (if desired),
+        but cannot contain +/- symbols (i.e. for ions) in the specie name.
+        -   We recommend using "_m" or "_p" for + and - ions, respectively.
+            I.e.: Na+ should be written as Na_p in the reactions and main configuration file.
 
-    Returns:
-        reaction_eqns:      List containing the system of differential equations in the same order of species as they appear in specie_order. I.e. if specie_order = [a, b] --> reaction_eqns = [da/dt, db/dt].
-    
-    Notes:
-        The reaction parser only supports forward (written) reactions (i.e. use of ->). Reversible reactions must be written as two independent reactions with their associated rate constants.
-        The reactions parser can parse the general reaction: aA1 + bB2 + [...] -> gG7 + hH8 + [...].
-        All chemical species can be alphanumeric with underscores (if desired), but cannot contain +/- symbols (i.e. for ions) in the specie name. 
-        We recommend using "_m" or "_p" for + and - ions, respectively. I.e.: Na+ should be written as Na_p in the reactions and main configuration file.
+    An appropriate reactions configuration file for the reversible reaction N2O4 <-> 2NO2 with k_f = 1e-2 and k_r = 3e-4 (these are hypothetical rates) would be:
+        [REACTIONS]
+        R1: N2O4 -> 2NO2
+        R2: 2NO2 -> N2O4
 
-        An appropriate reactions configuration file for the reversible reaction N2O4 <-> 2NO2 with k_f = 1e-2 and k_r = 3e-4 (these are hypothetical rates) would be:
+        [RATES]
+        R1: 1e-2
+        R2: 3e-4
 
-            [REACTIONS] 
-            R1: N2O4 -> 2NO2
-            R2: 2NO2 -> N2O4
+    Parameters
+    ----------
+    * specie_order: The ordered species as written in the main configuration file.
+                    Must match the same types of species present in reactions config file.
+    * rxn_book:     A dictionary that contains each reaction and their chemical species / rate constants.
 
-            [RATES]
-            R1: 1e-2
-            R2: 3e-4
-    """ 
+    Returns
+    -------
+    * reaction_eqns:    List containing the system of differential equations in the same order of species
+                        as they appear in specie_order. I.e. if specie_order = [a, b] --> reaction_eqns = [da/dt, db/dt].
+    """
     # The following pyparsing structure outlines the expected reaction structure from reactions config file.
     rxnType = pp.ZeroOrMore(pp.Literal('->')) 
     molecule_with_coeff = pp.ZeroOrMore(pp.Word(pp.nums, '.'+pp.nums))
@@ -296,16 +314,21 @@ def parse_reactions(specie_order: List[str], rxn_book: Dict[str, List[str]]) -> 
     return reaction_eqns
 
 
-def create_reaction_code(rxn_species: List[str], reaction_eqns: List[str], rxn_file_path: str, _ddt_reshape_shape: Optional[Tuple[int, int, int]] = None) -> None:
+def create_reaction_code(rxn_species:           List[str],
+                         reaction_eqns:         List[str],
+                         rxn_file_path:         str,
+                         _ddt_reshape_shape:    Optional[Tuple[int, int, int]] = None
+                         ) -> None:
     """
     Symbolically creates and simplifies the rhs of the system of differential equations for reaction environment using sympy.
     Then, this rhs is translated into source code and written into a separate .py file at runtime.
 
-    Args:
-        rxn_species:        Name of species in the order that they appear in the main config file.
-        reaction_eqns:      Output of `parse_reactions` which gives system of differential reaction equations appearing in the same specie order as rxn_species.
-        rxn_file_path:      The path to the file in which to save the generated reactions.
-        _ddt_reshape_shape: Shape needed by _ddt for PFR systems so that the inlet node does not have a reaction occurring at it.
+    Parameters
+    ----------
+    * rxn_species:          Name of species in the order that they appear in the main config file.
+    * reaction_eqns:        Output of `parse_reactions` which gives system of differential reaction equations appearing in the same specie order as rxn_species.
+    * rxn_file_path:        The path to the file in which to save the generated reactions.
+    * _ddt_reshape_shape:   Shape needed by _ddt for PFR systems so that the inlet node does not have a reaction occurring at it.
     """
     # If an empty list was passed for reaction_eqns, it means no reactions are involved in simulation (i.e. tracer experiment). 
     # Therefore take species given and add dummy *0 so that the reaction terms are not contributing to mass balance as desired.

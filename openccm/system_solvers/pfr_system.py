@@ -1,19 +1,25 @@
- ########################################################################################################################
-# Copyright 2024 the authors (see AUTHORS file for full list).
-#
-#                                                                                                                    #
-# This file is part of OpenCCM.
-#
-#                                                                                                                    #
-# OpenCCM is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public
-#
-# License as published by the Free Software Foundation, either version 2.1 of the License, or (at your option) any  later version.                                                                                                       #
-#                                                                                                                    #
-# OpenCCM is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.                                                                                                             #
-#                                                                                                                     #
+########################################################################################################################
+# Copyright 2024 the authors (see AUTHORS file for full list).                                                         #
+#                                                                                                                      #
+#                                                                                                                      #
+# This file is part of OpenCCM.                                                                                        #
+#                                                                                                                      #
+#                                                                                                                      #
+# OpenCCM is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public  #
+# License as published by the Free Software Foundation,either version 2.1 of the License, or (at your option)          #
+# any later version.                                                                                                   #
+#                                                                                                                      #
+# OpenCCM is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied        #
+# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.                                                     #
+# See the GNU Lesser General Public License for more details.                                                          #
+#                                                                                                                      #
 # You should have received a copy of the GNU Lesser General Public License along with OpenCCM. If not, see             #
 # <https://www.gnu.org/licenses/>.                                                                                     #
 ########################################################################################################################
+
+r"""
+The functions required for solving a simulation on a PFR network.
+"""
 
 from collections import defaultdict
 from typing import Callable, Dict, List, Tuple
@@ -43,33 +49,35 @@ def solve_system(
     Function to solve the system. Call with the network representation of the compartment model and it will
     Generate the numerical system to solve, solve it in time, and return the results.
 
-    Args:
-        pfr_network:    The network representation of the PFR as produced by `create_pfr_network`.
-            1. connections:             A dictionary representing the PFR network.
-                                        The keys are the IDs of each PFR, the values are tuples of two dictionaries.
-                                            - The first dictionary is for the inlet(s) of the PFR.
-                                            - The second dictionary is for the outlet(s) of the PFR.
-                                        For both dictionaries, the key is the connection ID
-                                        and the value is the ID of the PFR on the other end of the connection.
-            2. volumes:                 A numpy array of the volume of each PFR indexed by its ID.
-            3. volumetric_flows:        A numpy array of the volumetric flowrate through each connection indexed by its ID.
-            4. compartment_to_pfr_map:  A map between a compartment ID and the PFR IDs of all PFRs in it.
-                                        The PFR IDs are stored in the order in which they appear
-                                        (i.e. the most upstream PFR is first, and the most downstream PFR is last).
-        config_parser:  OpenCCM ConfigParser used for getting settings.
-        grouped_bcs:
+    Parameters
+    ----------
+    * pfr_network:      The network representation of the PFR as produced by `openccm.compartment_models.pfr.create_pfr_network`.
+        1. connections:             A dictionary representing the PFR network.
+                                    The keys are the IDs of each PFR, the values are tuples of two dictionaries.
+                                        - The first dictionary is for the inlet(s) of the PFR.
+                                        - The second dictionary is for the outlet(s) of the PFR.
+                                    For both dictionaries, the key is the connection ID
+                                    and the value is the ID of the PFR on the other end of the connection.
+        2. volumes:                 A numpy array of the volume of each PFR indexed by its ID.
+        3. volumetric_flows:        A numpy array of the volumetric flowrate through each connection indexed by its ID.
+        4. compartment_to_pfr_map:  A map between a compartment ID and the PFR IDs of all PFRs in it.
+                                    The PFR IDs are stored in the order in which they appear
+                                    (i.e. the most upstream PFR is first, and the most downstream PFR is last).
+    * config_parser:    OpenCCM ConfigParser used for getting settings.
+    * grouped_bcs:      GroupedBCs object for identifying which connections belong to domain inlets/outlets.
 
-    Returns:
-        t:          The times at which the ODE was solved (controlled by solve_ivp)
-        c:          The corresponding values for time t.
-        inlet_map:  Map between a domain inlet IDs and the PFRs that they're connected to.
-                        Keys are domain inlet IDs, values are a list of tuples.
-                            The first entry in the tuple is the PFR id,
-                            The second is the id of the connection between the inlet and the PFR.
-        outlet_map: Map between a domain outlet IDs and the PFRs that they're connected to.
-                        Keys are domain inlet IDs, values are a list of tuples.
-                            The first entry in the tuple is the PFR id,
-                            The second is the id of the connection between the outlet and the PFR.
+    Returns
+    -------
+    * t:            The times at which the ODE was solved (controlled by solve_ivp)
+    * c:            The corresponding values for time t.
+    * inlet_map:    Map between a domain inlet IDs and the PFRs that they're connected to.
+                    Keys are domain inlet IDs, values are a list of tuples.
+                    - The first entry in the tuple is the PFR id,
+                    - The second is the id of the connection between the inlet and the PFR.
+    * outlet_map:   Map between a domain outlet IDs and the PFRs that they're connected to.
+                    Keys are domain inlet IDs, values are a list of tuples.
+                    - The first entry in the tuple is the PFR id,
+                    - The second is the id of the connection between the outlet and the PFR.
     """
     print("Solving simulation")
 
@@ -218,53 +226,62 @@ def ddt(t: float,
     This function calculates the time derivative of the concentration at the different discretization points within
     the reactor.
 
-    dc/dt = ∇·(D∇c) - ∇·(vc) + R
-    dc/dt = D*d2c/dx2 - v*dc/dx + R
-    dc/dt = D*A*d2c/dV2 - Q*dc/dV + R
+        dc/dt = ∇·(D∇c) - ∇·(vc) + R
+        dc/dt = D*d2c/dx2 - v*dc/dx + R
+        dc/dt = D*A*d2c/dV2 - Q*dc/dV + R
 
     Assuming diffusion is negligible:
-    dc/dt = - Q*dc/dV + R
+
+        dc/dt = - Q*dc/dV + R
 
     Discretizing using backwards difference for space:
-    dc/dt = - Q * (c_i - c_i-1)/∆V + R
+
+        dc/dt = - Q * (c_i - c_i-1)/∆V + R
 
     Refactoring:
+
         dc/dt = - (Q/∆V) * (c_i - c_i-1) + R
 
     The convection term is discretized using ONLY 1st order backwards differences.
-        - Backwards difference to enforce upwinding
-        - 1st order to avoid the spurious oscillations that come with high order schemes (higher order was tested)
+    - Backwards difference to enforce upwinding
+    - 1st order to avoid the spurious oscillations that come with high order schemes (higher order was tested)
 
     The above equation holds for all spatial locations *except* for those on the inlet of each PFR.
     There, the following equation holds, which would result in a DAE:
+
         c_i = ∑_j (Q_{j->i} * c_j} / ∑Q_{j->i}
 
     The time derivative of the equation is taken to avoid using a DAE solver, providing:
+
         dc_i/dt = ∑_j (Q_weight_j * dc_j/dt)
+
     where
+
         Q_weight_j = Q_{j->i} / ∑Q_{j->i}.
 
-    Args:
-        t:                          Time at the current timestep
-        c:                          The state (values at each discretization point)
-        Q_weight:                   (n, 3) Array of info for connections between PFRs
-                                        1. PFR inlet node     (To know what value to assign it to)
-                                        2. Connection ID      (For Q_weight)
-                                        3. PFR outlet node    (To know what value to assign)
-        _ddt0:                      Q/∆V for each degree of freedom precomputed to save time, used as building block
+    Parameters
+    ----------
+    * t:                            Time at the current timestep
+    * c:                            The state (values at each discretization point)
+    * Q_weight:                     (n, 3) Array of info for connections between PFRs
+                                    1. PFR inlet node     (To know what value to assign it to)
+                                    2. Connection ID      (For Q_weight)
+                                    3. PFR outlet node    (To know what value to assign)
+    * _ddt0:                        Q/∆V for each degree of freedom precomputed to save time, used as building block
                                     at each timestep for calculating the time derivative.
-        connected_to_another_inlet: n x 3 array for knowing how to calculate the amount of mass going from one PFR into
+    * connected_to_another_inlet:   n x 3 array for knowing how to calculate the amount of mass going from one PFR into
                                     another. Each row contains:
-                                    0: The index into c for the inlet into which the flow goes.
-                                    1: The ID of the connection over which the flow goes.
-                                    2: The index into c for the outlet from which the flow comes.
-        all_inlet_ids:              An array containing the index into `c` that represent the inlet of each PFR.
-        c_shape:                    Tuple indicating the shape of c (num_cstr, num_species)
-        reactions:                  Reactions function in generated_code.py containing system of equations
-        bcs:                        Boundary conditions functions on domain inlets (all others don't matter).
+                                    1. The index into c for the inlet into which the flow goes.
+                                    2. The ID of the connection over which the flow goes.
+                                    3. The index into c for the outlet from which the flow comes.
+    * all_inlet_ids:                An array containing the index into `c` that represent the inlet of each PFR.
+    * c_shape:                      Tuple indicating the shape of c (num_cstr, num_species)
+    * reactions:                    Reactions function in generated_code.py containing system of equations
+    * bcs:                          Boundary conditions functions on domain inlets (all others don't matter).
 
-    Returns:
-        _ddt: The time derivative at each discretization point for each specie at the given time and concentrations
+    Returns
+    -------
+    * _ddt: The time derivative at each discretization point for each specie at the given time and concentrations
     """
     c = c.reshape(c_shape)
 

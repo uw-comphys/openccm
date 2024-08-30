@@ -1,16 +1,18 @@
 ########################################################################################################################
-# Copyright 2024 the authors (see AUTHORS file for full list).
-#
-#                                                                                                                    #
-# This file is part of OpenCCM.
-#
-#                                                                                                                    #
-# OpenCCM is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public
-#
-# License as published by the Free Software Foundation, either version 2.1 of the License, or (at your option) any  later version.                                                                                                       #
-#                                                                                                                    #
-# OpenCCM is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.                                                                                                             #
-#                                                                                                                     #
+# Copyright 2024 the authors (see AUTHORS file for full list).                                                         #
+#                                                                                                                      #
+#                                                                                                                      #
+# This file is part of OpenCCM.                                                                                        #
+#                                                                                                                      #
+#                                                                                                                      #
+# OpenCCM is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public  #
+# License as published by the Free Software Foundation,either version 2.1 of the License, or (at your option)          #
+# any later version.                                                                                                   #
+#                                                                                                                      #
+# OpenCCM is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied        #
+# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.                                                     #
+# See the GNU Lesser General Public License for more details.                                                          #
+#                                                                                                                      #
 # You should have received a copy of the GNU Lesser General Public License along with OpenCCM. If not, see             #
 # <https://www.gnu.org/licenses/>.                                                                                     #
 ########################################################################################################################
@@ -29,11 +31,13 @@ def convert_mesh_openfoam(config_parser: ConfigParser) -> CMesh:
     """
     Read OpenFOAM mesh information from file and convert it into OpenCCM's internal CMesh format.
 
-    Args:
-        config_parser:  OpenCCM ConfigParser from which to get the required OpenFOAM data.
+    Parameters
+    ----------
+    * config_parser:  OpenCCM ConfigParser from which to get the required OpenFOAM data.
 
-    Returns:
-        cmesh: The internal CMesh representation of the OpenFOAM mesh.
+    Returns
+    -------
+    * cmesh: The internal CMesh representation of the OpenFOAM mesh.
     """
     print("Converting Mesh")
     # Note: These file paths are NOT manually specified by the user. They are automatically generated
@@ -84,15 +88,17 @@ def _create_bc_mappings(number_facets: int, grouped_bcs: GroupedBCs, bc_names: D
     bc_to_facet_map is currently only needed for outputting data back into OpenFOAM format.
     bc_to_facet_map will store all values, not just the start and number of facets incase different mesh formats.
 
-    Args:
-        number_facets:  The number of facets that make up the mesh.
-        bc_names:       Dictionary where keys are the name of boundary condition and values are (startFace, nFace).
+    Parameters
+    ----------
+    * number_facets:    The number of facets that make up the mesh.
+    * bc_names:         Dictionary where keys are the name of boundary condition and values are (startFace, nFace).
 
     Returns
-        facet_to_bc_map: A dictionary mapping each facet to a BC index.
-                            * 0 for a non-bc facet
-                            * grouped_bcs.id(bc_name) for everything else.
-        bc_to_facet_map: A dictionary mapping each BC NAME to the facets that make it up.
+    -------
+    * facet_to_bc_map:  A dictionary mapping each facet to a BC index.
+                        * 0 for a non-bc facet
+                        * grouped_bcs.id(bc_name) for everything else.
+    * bc_to_facet_map:  A dictionary mapping each BC NAME to the facets that make it up.
     """
     assert len(set(bc_names)) == grouped_bcs.num_bcs
 
@@ -110,17 +116,19 @@ def _get_facet_element_info(owner: np.ndarray, neighbour: np.ndarray) -> Tuple[
                 Tuple[Tuple[int, ...], ...],
                 Tuple[Tuple[int, ...], ...]]:
     """
-    Calculate which elements share a facet.
+    Calculate the facets bounding each element and the elements which share each facet.
 
-    Args:
-        owner:      Array indexed by facet ID containing the ID of the owner element.
-        neighbour:  Array indexed by facet ID containing the ID of the neighbouring element.
+    Parameters
+    ----------
+    * owner:        Array indexed by facet ID containing the ID of the owner element.
+    * neighbour:    Array indexed by facet ID containing the ID of the neighbouring element.
                     Guaranteed to be at most the size of owner since entries in this array do not include domain boundary facets.
                     Only facets shared by two facets
 
-    Returns:
-        facet_elements:  A tuple of tuples representing the element IDs that share a facet.
-        element_facets:  A tuple indexed by element ID containing the facet IDs that bound that element.
+    Returns
+    -------
+    * facet_elements:  The elements which share a facet, indexed by its ID.
+    * element_facets:  The facets that bound an element, indexed by its ID.
     """
     assert len(owner) >= len(neighbour)
 
@@ -150,17 +158,23 @@ def _get_facet_element_info(owner: np.ndarray, neighbour: np.ndarray) -> Tuple[
 
 def _create_element_connectivity(neighbour: np.ndarray, owner: np.ndarray) -> Tuple[Tuple[int, ...], ...]:
     """
-    Create element connectivity.
+    Calculate the connectivity of mesh's elements.
+    Two elements are considered connected, i.e. neighbours, if they share a facet.
 
-    Args:
-        owner:      Array indexed by facet ID containing the ID of the owner element.
-        neighbour:  Array indexed by facet ID containing the ID of the neighbouring element.
-                    Guaranteed to be at most the size of owner since entries in this array do not include domain boundary facets.
-                    Only facets shared by two facets
+    OpenFOAM stores its connectivity using two entries: `owner` and `neighbour`.
+    Each facet has exactly one owner element, and will have a neighbour element unless the facet is on the domain boundary.
+    Because of this, the length of the neighbour array is the number of facets which have more than one element, and
+    represent the elements which have a neighbour.
+    This function uses those two arrays to create an explicit connectivity of the elements.
 
-    Returns:
-        ~:  Connectivity dictionary.
-            Keys are element IDs, values are a set of neighbouring element IDs.
+    Parameters
+    ----------
+    * owner:        The owner element of each facet, indexed by facet ID. Size of N
+    * neighbour:    The neighbour element of each facet, indexed by facet ID. Size M.
+
+    Returns
+    -------
+    * element_connectivity: The neighbours of each element, indexed by its ID.
     """
     element_connectivity: Dict[int, Set[int]] = defaultdict(set)
 
@@ -175,12 +189,14 @@ def _get_element_vertices(element_facets: Tuple[Tuple[int, ...], ...], facet_ver
     """
     Retrieve the vertex IDs that make up each element based on the element facet information and facet vertices.
 
-    Args:
-        element_facets: A tuple of tuples representing the facet ID for each element.
-        facet_vertices: A tuple of tuples representing the vertex IDs that for each facet.
+    Parameters
+    ----------
+    * element_facets: The facets making up each element, indexed by its ID.
+    * facet_vertices: The vertices making up each facet, indexed by its ID.
 
-    Returns:
-        A tuple of tuples representing the vertex IDs that make up each element.
+    Returns
+    -------
+    * element_vertices: The vertex IDs making up each element, indexed by its ID.
     """
     element_vertices = []
 
@@ -195,14 +211,18 @@ def _get_element_vertices(element_facets: Tuple[Tuple[int, ...], ...], facet_ver
 
 def _create_facet_connectivity(facet_vertices_all: Tuple[Tuple[int, ...], ...]) -> Tuple[Tuple[int, ...], ...]:
     """
-    Create facet connectivity based on the shared vertices between facets.
+    Calculate the connectivity of mesh's facets.
+    Two facets are considered connected, i.e. neighbours, if they share a vertex.
 
-    Args:
-        facet_vertices_all: A tuple of tuples representing the vertices of each facet.
+    Parameters
+    ----------
+    * facet_vertices_all: All neighbours A tuple of tuples representing the vertices of each facet.
 
-    Returns:
-        facet_connectivity: A tuple of tuples representing the connected facets for each facet.
+    Returns
+    -------
+    * facet_connectivity: The neighbouring facets of each facet, indexed by its ID.
     """
+    # Create a vertex -> facets lookup
     vertex_facets = defaultdict(set)
     for facet_id, vertices in enumerate(facet_vertices_all):
         for vertex in vertices:
