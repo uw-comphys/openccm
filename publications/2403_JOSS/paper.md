@@ -94,13 +94,17 @@ Square brackets indicates values which have a default with the default provided 
     [COMPARTMENT MODELLING]
     # Whether to use PFRs-in-series or a CSTR to model each compartment.
     model                   = PFR
-    # Volumetric flow threshold through a single facet below which the flow is considered 0.
+    # Volumetric flow through a single facet
+    # below which the flow is considered 0.
     flow_threshold_facet    = [1e-15]
-    # Volumetric flow threshold through a surface below which the flow is considered 0.
+    # Volumetric flow threshold through a surface
+    # below which the flow is considered 0.
     flow_threshold          = [1e-15]
-    # Maximum allowable difference (in % of compartment volume) between connections for merging them to one location.
+    # Maximum allowable difference (in % of compartment volume) 
+    # between connections for merging them to one location.
     dist_threshold          = [5 / 100]
-    # Absolute tolerances for checking that conservation of mass for the liquid after the flow optimization is performed.
+    # Absolute tolerances for checking that conservation of mass 
+    # after the flow optimization is performed.
     atol_opt                = [1e-2]
 
 # Reaction Configuration File
@@ -168,8 +172,8 @@ where `x` is the change in $\textrm{CaCO}_3$, in dimensionless units.
 
 The expected equilibrium concentrations for the four species are: $[NaCl] = 0.7706$, $[CaCO_3] = 0.8853$, $[Na_2CO_3] = 0.1147$, and $[CaCl_2] = 0.1147$. Based on the figures below, and from opening up the results, it can be seen that these steady state values are obtained at the outlet of the reactor.
 
-![Input/Output Concentrations for 'NaCl'.](images/system_response_a.pdf){ width=49% } ![Input/Output Concentrations for 'CaCO3'.](images/system_response_b.pdf){ width=49% }
-![Input/Output Concentrations for 'Na2CO3'.](images/system_response_c.pdf){ width=49% } ![Input/Output Concentrations for 'CaCl2'.](images/system_response_d.pdf){ width=49% }
+![Input/Output Concentrations for 'NaCl'.](images/system_response_NaCl.pdf){ width=49% } ![Input/Output Concentrations for 'CaCO3'.](images/system_response_CaCO3.pdf){ width=49% }
+![Input/Output Concentrations for 'Na2CO3'.](images/system_response_Na2CO3.pdf){ width=49% } ![Input/Output Concentrations for 'CaCl2'.](images/system_response_CaCl2.pdf){ width=49% }
 
 To output the `ParaView` visualizations, change `output_VTK` to `True` in the `CONFIG` file and re-run the simulation.
 
