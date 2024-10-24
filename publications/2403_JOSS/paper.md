@@ -168,7 +168,7 @@ $$ x \approx 0.1147 $$
 
 where `x` is the change in $\textrm{CaCO}_3$, in dimensionless units.
 
-The expected equilibrium concentrations for the four species are: $[NaCl] = 0.7706$, $[CaCO_3] = 0.8853$, $[Na_2CO_3] = 0.1147$, and $[CaCl_2] = 0.1147$. Based on the figures below and from direct inspection of the CM simulation results, correct steady-state values are obtained at the reactor outlet.
+The expected equilibrium concentrations for the four species are: $[\textrm{NaCl}] = 0.7706$, $[\textrm{CaCO_3}] = 0.8853$, $[\textrm{Na_2CO_3}] = 0.1147$, and $[\textrm{CaCl_2}] = 0.1147$. Based on the figures below and from direct inspection of the CM simulation results, correct steady-state values are obtained at the reactor outlet.
 
 ![Input/Output Concentrations for NaCl.](images/system_response_NaCl.pdf){ width=49% } ![Input/Output Concentrations for CaCO3.](images/system_response_CaCO3.pdf){ width=49% }
 ![Input/Output Concentrations for Na2CO3.](images/system_response_Na2CO3.pdf){ width=49% } ![Input/Output Concentrations for CaCl2.](images/system_response_CaCl2.pdf){ width=49% }
