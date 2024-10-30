@@ -1,5 +1,5 @@
 ---
-title: '`OpenCCM`: An Open-Source Continuous Compartmental Modelling Package'
+title: 'OpenCCM: An Open-Source Continuous Compartmental Modelling Package'
 tags:
  - Python
  - compartmental modelling
