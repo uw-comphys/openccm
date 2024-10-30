@@ -5,7 +5,6 @@
 [**Getting Started**](#getting-started)
 | [**Issues**](#issues)
 | [**Contribute**](#contribute)
-| [**Citation**](#citation)
 | [**Authors**](#authors)
 
 ## What is OpenCCM?
@@ -64,25 +63,6 @@ We welcome external contributions to the source code. This process will be easie
 * Ensure your modifications or additions adhere to the existing standard of the OpenCCM package, specifically detailed documentation for new methods (see existing methods for example documentation)
 * Test your modifications to ensure that the core functionality of the package has not been altered by running the unit tests.
 * Once the issue has been discussed with a package author, you may open a pull request containing your modifications
-
-
-## Citation
-
-If you plan to use OpenCCm in your own work, please cite using the following Bibtex citation:
-TODO: Fill in after having DOI
-```Bibtex
-@article{VasileOpenCCM202X,
-    author  = {Vasile, Alexandru Andrei and Tino, Matthew Peres an Aseri, Yuvraj and Abukhdeir, Nasser Mohieddin},
-    title   = {},
-    doi     = {},
-    journal = {Journal of Open Source Software},
-    number  = {},
-    pages   = {},
-    volume  = {},
-    year    = {202X},
-    url     = {}
-}
-```
 
 ## Authors
 
