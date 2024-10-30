@@ -1,6 +1,6 @@
 # OpenCCM
 
-TODO: DOI
+[![DOI](https://joss.theoj.org/papers/10.21105/joss.06963/status.svg)](https://doi.org/10.21105/joss.06963)
 
 [**Getting Started**](#getting-started)
 | [**Issues**](#issues)
