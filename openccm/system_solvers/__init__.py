@@ -30,7 +30,7 @@ import numpy as np
 from .cstr_system import solve_system as solve_cstr
 from .pfr_system import solve_system as solve_pfr
 from .. import ConfigParser
-from ..mesh import GroupedBCs
+from ..mesh import GroupedBCs, CMesh
 
 
 def solve_system(model:         str,
@@ -40,7 +40,7 @@ def solve_system(model:         str,
                                     np.ndarray,
                                     Dict[int, List[int]]],
                  config_parser: ConfigParser,
-                 grouped_bc:    GroupedBCs) \
+                 cmesh:         CMesh) \
         -> Tuple[
             np.ndarray,
             np.ndarray,
@@ -58,7 +58,7 @@ def solve_system(model:         str,
     * model_network:    Network of PFRs/CSTR. See `openccm.compartment_models.pfr.create_pfr_network`
                         or `openccm.compartment_models.cstr.create_cstr_network` for more details.
     * config_parser:    OpenCCM ConfigParser used for getting settings.
-    * grouped_bcs:      GroupedBCs object for identifying which connections belong to domain inlets/outlets.
+    * cmesh:            The CMesh from which the model being simulated was derived.
 
     Returns
     -------
@@ -74,9 +74,9 @@ def solve_system(model:         str,
                     - The second is the id of the connection between the outlet and the PFR/CSTR.
     """
     if model == 'pfr':
-        return solve_pfr(model_network, config_parser, grouped_bc)
+        return solve_pfr(model_network, config_parser, cmesh)
     else:
-        return solve_cstr(model_network, config_parser, grouped_bc)
+        return solve_cstr(model_network, config_parser, cmesh)
 
 
 def load_and_prepare_bc_ic_and_rxn(config_parser:       ConfigParser,
@@ -84,7 +84,7 @@ def load_and_prepare_bc_ic_and_rxn(config_parser:       ConfigParser,
                                    points_per_model:    int,
                                    _ddt_reshape_shape:  Optional[Tuple[int, int, int]],
                                    inlet_map:           Dict[int, List[Tuple[int, int]]],
-                                   grouped_bcs:         GroupedBCs,
+                                   cmesh:               CMesh,
                                    Q_weight_inlets:     Dict[int, List[float]],
                                    points_for_bc:       Dict[int, List[int]],
                                    t0:                  float) -> Tuple[Callable, Callable, np.ndarray]:
@@ -102,7 +102,7 @@ def load_and_prepare_bc_ic_and_rxn(config_parser:       ConfigParser,
                             related to the PFRs/CSTRs they're connected to.
                             - The first entry in the tuple is the PFR/CSTR ID,
                             - The second is the ID of the connection between the inlet and the PFR/CSTR.
-    * grouped_bcs:          Helper class used for consistent numbering and lookup of boundary conditions by name.
+    * cmesh:                The CMesh from which the model being simulated was derived.
     * Q_weight_inlets:      Lookup all Q_connection / Q_reactor_total for each inlet BC connection.
     * points_for_bc:        Lookup for all discretization points on an inlet BC, index by BC ID. Same ordering as Q_weight_inlets.
     * t0:                   Initial timestep, needed in order to evaluate the BCs at the first timestep if a PFR is used.
@@ -119,8 +119,8 @@ def load_and_prepare_bc_ic_and_rxn(config_parser:       ConfigParser,
 
     c0 = np.zeros(c_shape)
 
-    load_initial_conditions(config_parser, c0)
-    create_boundary_conditions(c0, config_parser, inlet_map, grouped_bcs, Q_weight_inlets, points_for_bc, t0, points_per_model)
+    load_initial_conditions(config_parser, c0, cmesh)
+    create_boundary_conditions(c0, config_parser, inlet_map, cmesh.grouped_bcs, Q_weight_inlets, points_for_bc, t0, points_per_model)
     generate_reaction_system(config_parser, _ddt_reshape_shape)
 
     c0 = c0.ravel()  # Required since solve_ivp needs 1D array

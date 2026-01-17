@@ -102,7 +102,7 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
     ####################################################################################################################
     # 1.1 Initial connections
     results_1 = connect_pfr_compartments(compartment_network, compartments, mesh, dir_vec, flows_and_upwind, True, config_parser)
-    id_next_connection, connection_distances, connection_pairing, compartment_network, compartments, _volumetric_flows = results_1
+    id_next_connection, connection_distances, connection_pairing, compartment_network, _volumetric_flows = results_1
     check_network_for_disconnected_subgraphs(connection_pairing)
 
     # 1.2 If it's a closed system, add extra inlet flows to allow for the flows to be tweaked
@@ -132,36 +132,24 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
     # 1.4 Reorder connections and merge their locations as needed.
     connection_locations: Dict[int, List[Tuple[float, List[int]]]] = dict()
     for id_compartment, connections_distances_i in connection_distances.items():
-        compartment_connections = connection_pairing[id_compartment]
         # Check that the compartment connections are correct
+        compartment_connections = connection_pairing[id_compartment]
         _connections = np.array(list(compartment_connections.keys()))
         assert np.any(_connections > 0)
         assert np.any(_connections < 0)
 
-        # Re-organize inlet/outlet info in a way that is useful for merging
-        # Using this format so that the list can be sorted by distance
-        connections: List[Tuple[float, int]] = [(connections_distances_i[id], id) for id in connections_distances_i]
-
-        # Sort the list by distance (0th element) in preparation for merging entries that are too close
-        connections.sort(key=lambda element: element[0])
-
         # 1.4a If needed, add the artificial flows to the compartment
         if need_extra_flows:
             # Put in to be the second inlet into the compartment
-            i_first_inlet = next(i for i, (_, id_connection) in enumerate(connections) if id_connection > 0)
-            connections.insert(i_first_inlet+1, (connections[i_first_inlet][0], compartment_to_extra_connection[id_compartment]))
+            i_first_inlet = next(i for i, (_, id_connection) in enumerate(connections_distances_i) if id_connection > 0)
+            connections_distances_i.insert(i_first_inlet+1, (connections_distances_i[i_first_inlet][0], compartment_to_extra_connection[id_compartment]))
 
         # 1.4b Reorder connections
-        connections = _fix_connection_ordering(connections, _volumetric_flows, id_compartment, atol_opt)
-
+        connections_distances_i = _fix_connection_ordering(connections_distances_i, _volumetric_flows, id_compartment, atol_opt)
         # 1.4c Re-order domain inlets/outlets
-        connections = _fix_domain_boundary_connection_ordering(connections, compartment_connections, mesh.grouped_bcs, id_compartment)
-
+        connections_distances_i = _fix_domain_boundary_connection_ordering(connections_distances_i, compartment_connections, mesh.grouped_bcs, id_compartment)
         # 1.4d Merge connection locations
-        connections_merged = _merge_connections(connections, _volumetric_flows, dist_threshold, compartment_connections, atol_opt)
-
-        # Save the information about the connection locations
-        connection_locations[id_compartment] = connections_merged
+        connection_locations[id_compartment] = _merge_connections(connections_distances_i, _volumetric_flows, dist_threshold, compartment_connections, atol_opt)
 
     ####################################################################################################################
     # 2. Split compartment into PFRs
@@ -191,8 +179,7 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
     # The mapping must be made here but is only applies in the loop since the positive and negative signs
     # on the connection ID are still needed in order to split them into inlets/outlets.
     id_new = 0
-    ids_old = list(_volumetric_flows.keys())
-    ids_old.sort()
+    ids_old = sorted(_volumetric_flows.keys())
     map: Dict[int, int] = dict()
 
     for id_old in ids_old:
@@ -200,9 +187,8 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
         _volumetric_flows[id_new] = _volumetric_flows.pop(id_old)
         id_new += 1
 
-    connections: Dict[int, Tuple[Dict[int, int], Dict[int, int]]] = dict()
-
     # Re-numbing inlet and outlet information and adding it to the final dictionary
+    connections: Dict[int, Tuple[Dict[int, int], Dict[int, int]]] = dict()
     for pfr, _connections in connection_pairing.items():
         inlets:  Dict[int, int] = dict()
         outlets: Dict[int, int] = dict()
@@ -228,10 +214,8 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
         volumetric_flows[connection_id] = _volumetric_flows[connection_id]
 
     for pfr, connections_i in connections.items():
-        # There should be inlets
-        assert len(connections_i[0].values()) > 0
-        # There should be outlets
-        assert len(connections_i[1].values()) > 0
+        assert len(connections_i[0].values()) > 0  # There should be inlets
+        assert len(connections_i[1].values()) > 0  # There should be outlets
 
     # Final optimization of flowrates in order to ensure mass is conserved around each PFR
     tweak_final_flows(connections, volumetric_flows, mesh.grouped_bcs, atol_opt)
@@ -952,12 +936,13 @@ def connect_pfr_compartments(compartment_network:   Dict[int, Dict[int, Dict[int
                              flows_and_upwind:      np.ndarray,
                              final:                 bool,
                              config_parser:         ConfigParser) \
-        -> Tuple[int,
-                 Dict[int, Dict[int, float]],
-                 Dict[int, Dict[int, int]],
-                 Dict[int, Dict[int, Dict[int, int]]],
-                 Dict[int, Set[int]],
-                 Dict[int, float]]:
+        -> Tuple[
+            int,
+            Dict[int, List[Tuple[float, int]]],
+            Dict[int, Dict[int, int]],
+            Dict[int, Dict[int, Dict[int, int]]],
+            Dict[int, float]
+        ]:
     """
     Convert a network of compartments connected by facets into a network of compartments connected by labeled connections.
     Each connection representing multiple facets and having an ID and flowrate associated with it.
@@ -998,7 +983,9 @@ def connect_pfr_compartments(compartment_network:   Dict[int, Dict[int, Dict[int
     Returns
     -------
     1. id_next_connection:      The integer to use for the next connection ID.
-    2. connection_distances:    Dictionary storing the distance.
+    2. connection_distances:    Mapping between comparment ID and the information about connection distances.
+                                Key is compartment ID, value is a list of tuples (distance, connection_id)
+                                which has been sorted by `distance`.
     3. connection_pairing:      Dictionary storing info about which other compartments a given compartment is connected to.
                                 - First key is compartment ID
                                 - Values is a Dict[int, int]
@@ -1022,7 +1009,7 @@ def connect_pfr_compartments(compartment_network:   Dict[int, Dict[int, Dict[int
     DEBUG                   = config_parser.get_item(['SETUP',                 'DEBUG'],                bool)
 
     # Dictionary used to store the merged connection information
-    connection_distances: Dict[int, Dict[int, float]] = dict()
+    connection_distances: Dict[int, List[Tuple[float, int]]] = dict()
     # Dictionary storing info about which other compartments a given compartment is connected to
     connection_pairing:   Dict[int, Dict[int, int]]   = dict()
     volumetric_flows:     Dict[int, float]            = dict()
@@ -1169,19 +1156,21 @@ def connect_pfr_compartments(compartment_network:   Dict[int, Dict[int, Dict[int
                 # Min and max values for normalizing between 0.0 and 1.0
                 # (setting to inf and -inf so that the min and max always work).
                 dot_min, dot_max = np.inf, -np.inf
-                connections_distances_i: Dict[int, float] = dict()
+                _connections_distances_i: Dict[int, float] = dict()
                 for id_connection in compartment_connections:
                     center_of_flow = centers_of_flow_for_connection[abs(id_connection)]
                     dot_val = avg_direction.dot(center_of_flow)
 
                     dot_min, dot_max = min(dot_min, dot_val), max(dot_max, dot_val)
-                    connections_distances_i[id_connection] = dot_val
+                    _connections_distances_i[id_connection] = dot_val
 
                 # Normalize between 0.0 and 1.0
                 delta_dot = dot_max - dot_min
-                for id_connection in connections_distances_i:
-                    connections_distances_i[id_connection] = (connections_distances_i[id_connection] - dot_min) / delta_dot
+                for id_connection in _connections_distances_i:
+                    _connections_distances_i[id_connection] = (_connections_distances_i[id_connection] - dot_min) / delta_dot
 
+                connections_distances_i: List[Tuple[float, int]] = [(dist, connection) for connection, dist in _connections_distances_i.items()]
+                connections_distances_i.sort(key=lambda entry: entry[0])
                 connection_distances[id_compartment] = connections_distances_i
             connection_pairing[id_compartment] = compartment_connections
 
@@ -1199,7 +1188,7 @@ def connect_pfr_compartments(compartment_network:   Dict[int, Dict[int, Dict[int
             if flow < flow_threshold:
                 raise ValueError(f"Connection {connection} has a flowrate ({flow}) below the threshold ({flow_threshold})")
 
-    return id_of_next_connection, connection_distances, connection_pairing, compartment_network, compartments, volumetric_flows
+    return id_of_next_connection, connection_distances, connection_pairing, compartment_network, volumetric_flows
 
 
 def _group_facets_into_surfaces(facets: Set[int], mesh: CMesh) -> List[List[int]]:

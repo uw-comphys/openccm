@@ -23,7 +23,7 @@ The functions required for solving a simulation on a CSTR network.
 
 import os
 from collections import defaultdict
-from typing import Callable, Dict, List, Set, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 from numba import njit
@@ -31,7 +31,7 @@ from scipy.integrate import solve_ivp
 
 from .helper_functions import generate_t_eval
 from ..config_functions import ConfigParser
-from ..mesh import GroupedBCs
+from ..mesh import CMesh
 
 
 def solve_system(
@@ -41,7 +41,7 @@ def solve_system(
                             np.ndarray,
                             Dict[int, List[int]]],
         config_parser:  ConfigParser,
-        grouped_bcs:    GroupedBCs) \
+        cmesh:          CMesh) \
         -> Tuple[
             np.ndarray,
             np.ndarray,
@@ -63,7 +63,7 @@ def solve_system(
                         2. volumes:             A numpy array of the volume of each CSTR indexed by its ID.
                         3. volumetric_flows:    A numpy array of the volumetric flowrate through each connection indexed by its ID.
     * config_parser:    OpenCCM ConfigParser for getting settings.
-    * grouped_bcs:      GroupedBCs object needed to create the boundary conditions.
+    * cmesh:            The CMesh from which the CSTR network was created.
 
     Returns
     -------
@@ -135,7 +135,7 @@ def solve_system(
                                                         points_per_model=1,
                                                         _ddt_reshape_shape=None,
                                                         inlet_map=inlet_map,
-                                                        grouped_bcs=grouped_bcs,
+                                                        cmesh=cmesh,
                                                         Q_weight_inlets=Q_weight_inlets,
                                                         points_for_bc=points_for_bc,
                                                         t0=t_span[0])
