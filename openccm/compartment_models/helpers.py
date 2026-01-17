@@ -145,7 +145,7 @@ def tweak_compartment_flows(
         raise ValueError(f"Absolute tolerance must be greater than {eps/safety_factor:.3e}")
 
     # Scale volumetric flows to avoid numerical issues
-    v_min = min(volumetric_flows.values())
+    v_min = min(flow for flow in volumetric_flows.values() if flow > 0)
     for _id in volumetric_flows:
         volumetric_flows[_id] /= v_min
 

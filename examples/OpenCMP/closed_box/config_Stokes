@@ -1,0 +1,41 @@
+[MESH]
+filename = box.msh
+curved_elements = False
+
+[FINITE ELEMENT SPACE]
+elements = u -> HDiv
+           p -> L2
+interpolant_order = 3
+
+[DG]
+DG = True
+interior_penalty_coefficient = 10.0
+
+[SOLVER]
+solver = direct
+preconditioner = default
+linearization_method = Oseen
+nonlinear_tolerance = relative -> 0
+                      absolute -> 1e-10
+nonlinear_max_iterations = 3
+
+[TRANSIENT]
+transient = False
+scheme = adaptive two step
+time_range = 0, 5000
+dt = 1e-2
+dt_range = 1e-10, 1000
+dt_tolerance = relative -> 0
+               absolute -> 1e-3
+
+[VISUALIZATION]
+save_to_file = True
+save_type = .vtu
+save_frequency = 5, numit
+split_components = True
+
+[OTHER]
+model = Stokes
+run_dir = .
+num_threads = 4
+messaging_level = 2

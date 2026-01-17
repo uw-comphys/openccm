@@ -105,10 +105,31 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
     id_next_connection, connection_distances, connection_pairing, compartment_network, compartments, _volumetric_flows = results_1
     check_network_for_disconnected_subgraphs(connection_pairing)
 
-    # 1.2 Optimize connections to prevent flow reversal when creating the intra-compartment flows.
-    tweak_compartment_flows(connection_pairing, _volumetric_flows, mesh.grouped_bcs, atol_opt)
+    # 1.2 If it's a closed system, add extra inlet flows to allow for the flows to be tweaked
+    need_extra_flows = len(mesh.grouped_bcs.domain_in_out_names) == 0
+    if need_extra_flows:
+        config_parser['INPUT']['domain_inlet_names'] = "('extra_inlet',)"
+        tmp_grouped_bcs = GroupedBCs(config_parser)
 
-    # 1.3 Reorder connections and merge their locations as needed.
+        compartment_to_extra_connection: Dict[int, int] = {}
+        id_extra_compartment = max(compartments) + 1
+        extra_compartment: Dict[int, int] = {id_next_connection: tmp_grouped_bcs.id('extra_inlet')}
+        _volumetric_flows[id_next_connection] = 0
+        id_next_connection += 1
+        for compartment, connections in connection_pairing.items():
+            connections[id_next_connection] = id_extra_compartment
+            extra_compartment[-id_next_connection] = compartment
+            _volumetric_flows[id_next_connection] = 0
+            compartment_to_extra_connection[compartment] = id_next_connection
+            id_next_connection += 1
+        connection_pairing[id_extra_compartment] = extra_compartment
+    else:
+        tmp_grouped_bcs = mesh.grouped_bcs
+
+    # 1.3 Optimize connections to prevent flow reversal when creating the intra-compartment flows.
+    tweak_compartment_flows(connection_pairing, _volumetric_flows, tmp_grouped_bcs, atol_opt)
+
+    # 1.4 Reorder connections and merge their locations as needed.
     connection_locations: Dict[int, List[Tuple[float, List[int]]]] = dict()
     for id_compartment, connections_distances_i in connection_distances.items():
         compartment_connections = connection_pairing[id_compartment]
@@ -124,13 +145,19 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
         # Sort the list by distance (0th element) in preparation for merging entries that are too close
         connections.sort(key=lambda element: element[0])
 
-        # 1.3a Reorder connections
+        # 1.4a If needed, add the artificial flows to the compartment
+        if need_extra_flows:
+            # Put in to be the second inlet into the compartment
+            i_first_inlet = next(i for i, (_, id_connection) in enumerate(connections) if id_connection > 0)
+            connections.insert(i_first_inlet+1, (connections[i_first_inlet][0], compartment_to_extra_connection[id_compartment]))
+
+        # 1.4b Reorder connections
         connections = _fix_connection_ordering(connections, _volumetric_flows, id_compartment, atol_opt)
 
-        # 1.3b Re-order domain inlets/outlets
+        # 1.4c Re-order domain inlets/outlets
         connections = _fix_domain_boundary_connection_ordering(connections, compartment_connections, mesh.grouped_bcs, id_compartment)
 
-        # 1.4 Merge connection locations
+        # 1.4d Merge connection locations
         connections_merged = _merge_connections(connections, _volumetric_flows, dist_threshold, compartment_connections, atol_opt)
 
         # Save the information about the connection locations
@@ -140,8 +167,22 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
     # 2. Split compartment into PFRs
     ####################################################################################################################
     output = _compartments_to_pfrs(connection_locations, connection_pairing, volumes_compartments, _volumetric_flows,
-                                   len(compartment_network.keys()) + 1, id_next_connection)
-    _volumes, _volumetric_flows, all_connection_pairing, compartment_to_pfr_map  = output
+                                   max(connection_pairing.keys()) + 1, id_next_connection, skip_last_compartment=need_extra_flows)
+    _volumes, _volumetric_flows, connection_pairing, compartment_to_pfr_map  = output
+
+    # If added, remove extra compartment info
+    if need_extra_flows:
+        config_parser['INPUT']['domain_inlet_names']  = "None"
+        id_extra_compartment = max(connection_pairing.keys())
+        extra_connections_info = connection_pairing.pop(id_extra_compartment)
+
+        for connection, neighbour in extra_connections_info.items():
+            _volumetric_flows.pop(abs(connection))
+
+            if neighbour < 0:  # domain_inlet
+                pass  # Domain inlet, won't be in connection_pairing
+            else:
+                connection_pairing[neighbour].pop(-connection)
 
     ####################################################################################################################
     # 3. Post Processing
@@ -187,19 +228,10 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
         volumetric_flows[connection_id] = _volumetric_flows[connection_id]
 
     for pfr, connections_i in connections.items():
-        # Check inlet
-        _inlets = np.array(list(connections_i[0].values()))
         # There should be inlets
-        assert len(_inlets) > 0
-        # If one of the inlets is a domain BC, it should be the only one.
-        assert np.all(_inlets < 0) or np.all(_inlets >= 0)
-
-        # Check outlet
-        _outlets = np.array(list(connections_i[1].values()))
+        assert len(connections_i[0].values()) > 0
         # There should be outlets
-        assert len(_outlets) > 0
-        # If one of the outlets is a domain BC, it should be the only one.
-        assert np.all(_outlets < 0) or np.all(_outlets >= 0)
+        assert len(connections_i[1].values()) > 0
 
     # Final optimization of flowrates in order to ensure mass is conserved around each PFR
     tweak_final_flows(connections, volumetric_flows, mesh.grouped_bcs, atol_opt)
@@ -213,7 +245,8 @@ def _compartments_to_pfrs(connection_locations:      Dict[int, List[Tuple[float,
                           volumes_compartments:      Dict[int, float],
                           volumetric_flows:          Dict[int, float],
                           id_of_next_pfr:            int,
-                          id_of_next_connection:     int) \
+                          id_of_next_connection:     int,
+                          skip_last_compartment:     bool) \
         -> Tuple[
             Dict[int, float],
             Dict[int, float],
@@ -236,6 +269,9 @@ def _compartments_to_pfrs(connection_locations:      Dict[int, List[Tuple[float,
     * id_of_next_pfr:           ID to use for the next PFR to be made.
     * id_of_next_connection:    ID to use for the next connection if one needs to be made.
                                 This value is used to ensure that each connection has a unique ID.
+    * skip_last_compartment:    Whether the last compartment should be split into PFRs or not.
+                                If True, the last compartment represents the extra compartment used to balance
+                                mass in a closed system.
 
     Returns
     -------
@@ -243,7 +279,7 @@ def _compartments_to_pfrs(connection_locations:      Dict[int, List[Tuple[float,
     2. volumetric_flows:        Flows through each compartment, updated with all new flows
     3. all_connection_pairing:  Same as input, but now updated to contain the pairings between PFRs rather than
                                 between compartments
-    4. compartment_to_pfr_map:  A Mapping between PFR ID and the
+    4. compartment_to_pfr_map:  Mapping between the compartment ID and the PFR(s) that are inside it.
     """
     volumes_pfr: Dict[int, float] = dict()
     compartment_to_pfr_map: Dict[int, List[int]] = dict()
@@ -405,8 +441,35 @@ def _compartments_to_pfrs(connection_locations:      Dict[int, List[Tuple[float,
         # Store the list of PFRs in this compartment
         compartment_to_pfr_map[id_compartment_i] = list(range(id_of_next_pfr_pre, id_of_next_pfr))
 
+    # If needed, renumber the skipped compartment in order to give it the largest ID
+    # So that after removing it later the remaining compartments are labeled [0, N-1]
+    if skip_last_compartment:
+        id_to_skip = min(all_connection_pairing.keys())
+        id_new_for_skipped = max(all_connection_pairing.keys()) + 1
+
+        # Re-number inside all_connection_pairing
+        connections = all_connection_pairing.pop(id_to_skip)
+        all_connection_pairing[id_new_for_skipped] = connections
+        # Update numbering of this PFR in all referenced locations
+        for id_connection, id_pfr_other in connections.items():
+            if id_pfr_other >= 0:  # Negative value is domain inlet/outlet
+                all_connection_pairing[id_pfr_other][-id_connection] = id_new_for_skipped
+    else:
+        id_new_for_skipped = -1
     # Re-number PFRs
     for id_new, id_old in enumerate(sorted(all_connection_pairing.keys())):
+        # Re-number inside all_connection_pairing
+        connections = all_connection_pairing.pop(id_old)
+        all_connection_pairing[id_new] = connections
+        # Update numbering of this PFR in all referenced locations
+        for id_connection, id_pfr_other in connections.items():
+            if id_pfr_other >= 0:  # Negative value is domain inlet/outlet
+                all_connection_pairing[id_pfr_other][-id_connection] = id_new
+
+        if id_old == id_new_for_skipped:
+            # Don't need the rest, so skip it.
+            continue
+
         # Re-number inside compartment_to_pfr_map
         for pfrs_in_compartment in compartment_to_pfr_map.values():
             if id_old in pfrs_in_compartment:
@@ -415,14 +478,6 @@ def _compartments_to_pfrs(connection_locations:      Dict[int, List[Tuple[float,
 
         # Re-number inside volumes
         volumes_pfr[id_new] = volumes_pfr.pop(id_old)
-
-        # Re-number inside all_connection_pairing
-        connections = all_connection_pairing.pop(id_old)
-        all_connection_pairing[id_new] = connections
-        # Update numbering of this PFR in all referenced locations
-        for id_connection, id_pfr_other in connections.items():
-            if id_pfr_other >= 0:  # Negative value is domain inlet/outlet
-                all_connection_pairing[id_pfr_other][int(-id_connection)] = id_new
 
     for volume in volumes_pfr.values():
         assert volume > 0
