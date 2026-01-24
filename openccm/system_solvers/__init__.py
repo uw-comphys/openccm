@@ -30,7 +30,7 @@ import numpy as np
 from .cstr_system import solve_system as solve_cstr
 from .pfr_system import solve_system as solve_pfr
 from .. import ConfigParser
-from ..mesh import GroupedBCs, CMesh
+from ..mesh import CMesh, create_dof_to_element_map
 
 
 def solve_system(model:         str,
@@ -79,17 +79,21 @@ def solve_system(model:         str,
         return solve_cstr(model_network, config_parser, cmesh)
 
 
-def load_and_prepare_bc_ic_and_rxn(config_parser:       ConfigParser,
-                                   c_shape:             Tuple[int, int],
-                                   points_per_model:    int,
-                                   _ddt_reshape_shape:  Optional[Tuple[int, int, int]],
-                                   inlet_map:           Dict[int, List[Tuple[int, int]]],
-                                   cmesh:               CMesh,
-                                   Q_weight_inlets:     Dict[int, List[float]],
-                                   points_for_bc:       Dict[int, List[int]],
-                                   t0:                  float) -> Tuple[Callable, Callable, np.ndarray]:
+def load_and_prepare_bc_ic_and_rxn(config_parser:               ConfigParser,
+                                   c_shape:                     Tuple[int, int],
+                                   points_per_model:            int,
+                                   _ddt_reshape_shape:          Optional[Tuple[int, int, int]],
+                                   cmesh:                       CMesh,
+                                   Q_weight_inlets:             Dict[int, List[float]],
+                                   model_volumes:               np.ndarray,
+                                   points_for_bc:               Dict[int, List[int]],
+                                   t0:                          float,
+                                   model_to_element_map:        List[List[Tuple[float, int]]],
+                                   connected_to_another_inlet:  Optional[np.ndarray]=None,
+                                   Q_weight:                    Optional[np.ndarray]=None
+                                   ) -> Tuple[Callable, Callable, np.ndarray]:
     """
-    Wrapper function for creating the initial condition array, applying the initial conditions to it
+    Wrapper function for creating the initial condition array and applying the initial and boundary conditions to it.
 
     Parameters
     ----------
@@ -98,14 +102,13 @@ def load_and_prepare_bc_ic_and_rxn(config_parser:       ConfigParser,
     * points_per_model:     Number of discretization points per model (1 for CSTR, >2 for PFR).
     * _ddt_reshape_shape:   Shape needed by _ddt for PFR systems so that the inlet node does not have a reaction
                             occurring at it. Used by `generate_reaction_system`.
-    * inlet_map:            Map between domain inlet IDs and a list of tuples containing info
-                            related to the PFRs/CSTRs they're connected to.
-                            - The first entry in the tuple is the PFR/CSTR ID,
-                            - The second is the ID of the connection between the inlet and the PFR/CSTR.
     * cmesh:                The CMesh from which the model being simulated was derived.
     * Q_weight_inlets:      Lookup all Q_connection / Q_reactor_total for each inlet BC connection.
+    * model_volumes:        TODO
     * points_for_bc:        Lookup for all discretization points on an inlet BC, index by BC ID. Same ordering as Q_weight_inlets.
     * t0:                   Initial timestep, needed in order to evaluate the BCs at the first timestep if a PFR is used.
+    * model_to_element_map: TODO
+    * connected_to_another_inlet: For a PFR network, this specif
 
     Returns
     -------
@@ -117,10 +120,12 @@ def load_and_prepare_bc_ic_and_rxn(config_parser:       ConfigParser,
     from .boundary_and_initial_conditions import load_initial_conditions, create_boundary_conditions
     from .reactions import generate_reaction_system
 
+    dof_to_element_map = create_dof_to_element_map(model_to_element_map, points_per_model)
+
     c0 = np.zeros(c_shape)
 
-    load_initial_conditions(config_parser, c0, cmesh)
-    create_boundary_conditions(c0, config_parser, inlet_map, cmesh.grouped_bcs, Q_weight_inlets, points_for_bc, t0, points_per_model)
+    load_initial_conditions(config_parser, c0, cmesh, dof_to_element_map, points_per_model, connected_to_another_inlet, Q_weight)
+    create_boundary_conditions(c0, config_parser, Q_weight_inlets, points_for_bc, t0, points_per_model, cmesh, dof_to_element_map, model_volumes)
     generate_reaction_system(config_parser, _ddt_reshape_shape)
 
     c0 = c0.ravel()  # Required since solve_ivp needs 1D array

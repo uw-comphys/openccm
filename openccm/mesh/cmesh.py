@@ -70,6 +70,12 @@ class GroupedBCs:
         self.no_flux_names: Tuple[str, ...] = no_flux_names if no_flux_names else tuple()
         """The names of all boundaries no flow through them; they are removed from the compartmentalization."""
 
+        for reserved_name in ['point']:
+            if (reserved_name in self.no_flux_names
+                    or reserved_name in self.ignored_names
+                    or 'point' in self.domain_in_out_names):
+                raise ValueError("'point' is a reserved keyword and cannot be used in boundary conditions names.")
+
         self.domain_inlets = tuple(self.id(inlet_name) for inlet_name in self.domain_inlet_names)
         """The IDs of all inlet boundaries, in the same order as `domain_inlet_names`."""
         self.domain_outlets = tuple(self.id(outlet_name) for outlet_name in self.domain_outlet_names)
@@ -199,6 +205,24 @@ class CMesh:
         self.facet_size             = self._calculate_facet_sizes()
         """The size of each facet, indexed by its ID. Represents length for 2D meshes and area for 3D meshes."""
         self.facet_size.flags.writeable = False
+        self.element_centroids      = self._calculate_element_centroids()
+        self.element_centroids.flags.writeable = False
+
+    def _calculate_element_centroids(self) -> np.ndarray:
+        """
+        Returns:
+            centroids: A numpy array representing the centroid of each element.
+        """
+        n_elements = len(self.element_vertices)
+        n_dim      = len(self.vertices[0])
+
+        centroids = np.zeros((n_elements, n_dim))
+        for element, vertices in enumerate(self.element_vertices):
+            for vertex in vertices:
+                centroids[element, :] += self.vertices[vertex]
+            centroids[element, :] /= len(vertices)
+
+        return centroids
 
     def _calculate_facet_center(self) -> np.ndarray:
         """

@@ -26,9 +26,11 @@ import numpy as np
 
 from ..config_functions import ConfigParser
 from ..mesh import CMesh
-from .vtu_output import cstrs_to_vtu_and_save_opencmp, pfrs_to_vtu_and_save_opencmp, cstrs_to_vtu_and_save_openfoam, \
-                        create_element_label_gfu, create_compartment_label_gfu, label_compartments_openfoam
 from .analysis import network_to_rtd, plot_results, visualize_model_network
+from .vtu_output import cstrs_to_vtu_and_save_opencmp, pfrs_to_vtu_and_save_opencmp, \
+                        export_to_vtu_openfoam, \
+                        create_element_label_gfu, create_compartment_label_gfu, \
+                        label_compartments_openfoam, label_elements_openfoam, label_models_and_dof_openfoam
 
 
 def convert_to_vtu_and_save(OpenCMP:        bool,
@@ -69,7 +71,4 @@ def convert_to_vtu_and_save(OpenCMP:        bool,
         else:
             cstrs_to_vtu_and_save_opencmp(system_results, compartments, config_parser, OpenCMP_mesh)
     else:
-        if model == 'pfr':
-            raise NotImplementedError("PFR visualization for OpenFOAM input not yet implemented")
-        else:
-            cstrs_to_vtu_and_save_openfoam(system_results, compartments, config_parser, cmesh)
+        export_to_vtu_openfoam(system_results[0], system_results[1], model_network[-1], config_parser, cmesh)

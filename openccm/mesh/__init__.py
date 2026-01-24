@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU Lesser General Public License along with OpenCCM. If not, see             #
 # <https://www.gnu.org/licenses/>.                                                                                     #
 ########################################################################################################################
+from typing import List, Tuple
 
 r"""
 The mesh module contains the intermediate mesh representation, CMesh, and the functions required to convert OpenFOAM
@@ -93,3 +94,62 @@ def convert_velocities_to_flows(cmesh: CMesh, vel_vec: np.ndarray) -> np.ndarray
             raise ValueError(f'Facet {facet} has {len(facet_elements)} elements, but should only have 1 or 2.')
 
     return np.array([flow, upwind_element], dtype=object).transpose()
+
+
+def create_dof_to_element_map(model_to_element_map: List[List[Tuple[float, int]]], points_per_model: int) -> List[List[Tuple[int, int, float]]]:
+    """
+    Convert the mapping between PFR and elements in it to a mapping from degree of freedom (dof) in the discretized system
+    to the element.
+
+    Args:
+        model_to_element_map:   Mapping between model ID and a list of ordered tuples (distance_in_model, element ID)/
+        points_per_model:       Number of discretization points per model. 1 for CSTRs, >1 for PFRs.
+
+    Returns:
+        dof_to_element_map:     Mapping between degree of freedom and the ordered lists of tuples representing the elements
+                                that this dof maps to. Tuple contains (element ID, dof_other, weight_this).
+                                dof_other and weight_this are used for a linear interpolation of value between the value of
+                                this dof and the nearest (dof_other).
+    """
+    dof_dist = np.linspace(0.0, 1.0, num=points_per_model)
+    # delta is not used for CSTR. Using a very small number for delta in order to push the weighing term to clip at 1.0
+    # so that the same downstream processing path can be used for both cases.
+    delta = 1.0 / (points_per_model - 1) / 2 if points_per_model > 1 else 1e20
+
+    dof_to_element_map: List[List[Tuple[int, int, float]]] = []
+
+    for distances_elements in model_to_element_map:
+        distances_elements = distances_elements.copy()
+        for i in range(points_per_model):
+            dof = len(dof_to_element_map)
+            if len(distances_elements) == 0:  # Remaining DOFs don't map to any element
+                dof_to_element_map.extend([] for _ in range(i, points_per_model))
+                break
+            if i == points_per_model - 1:  # Last point in PFR (Must have this branch before the i == 0 for CSTRs)
+                dof_other = dof - 1
+                dists = distances_elements  # Whatever is left
+                dof_to_element_map.append([(element, dof_other, np.clip(1.0 + (dist - 1.0) / (2*delta), 0.0, 1.0)) for dist, element in dists])
+            elif i == 0:  # First point in PFR
+                dof_other = dof + 1
+                j = next((_i for _i, val in enumerate(distances_elements) if val[0] > delta), len(distances_elements))
+                dists, distances_elements = distances_elements[:j], distances_elements[j:]
+
+                dof_to_element_map.append([(element, dof_other, np.clip(1.0 - dist / (2*delta), 0.0, 1.0)) for dist, element in dists])
+            else:  # Middle Points
+                # Before discretization point
+                dof_other_1 = dof - 1
+                j = next((_i for _i, val in enumerate(distances_elements) if val[0] > dof_dist[i]),
+                         len(distances_elements))
+                dists, distances_elements = distances_elements[:j], distances_elements[j:]
+                mapping_1 = [(element, dof_other_1, np.clip((dist - dof_dist[i-1]) / (2*delta), 0.0, 1.0)) for dist, element in dists]
+
+                if len(distances_elements) == 0:  # Remaining DOFs don't map to any element
+                    dof_to_element_map.append(mapping_1)
+                    continue
+
+                # After discretization point
+                dof_other_2 = dof + 1
+                j = next((_i for _i, val in enumerate(distances_elements) if val[0] > dof_dist[i] + delta), len(distances_elements))
+                dists, distances_elements = distances_elements[:j], distances_elements[j:]
+                dof_to_element_map.append(mapping_1 + [(element, dof_other_2, np.clip((dof_dist[i+1] - dist) / (2*delta), 0.0, 1.0)) for dist, element in dists])
+    return dof_to_element_map

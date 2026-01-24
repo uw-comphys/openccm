@@ -39,7 +39,9 @@ def solve_system(
                             Dict[int, Tuple[Dict[int, int], Dict[int, int]]],
                             np.ndarray,
                             np.ndarray,
-                            Dict[int, List[int]]],
+                            Dict[int, List[int]],
+                            List[List[Tuple[float, int]]]
+                        ],
         config_parser:  ConfigParser,
         cmesh:          CMesh) \
         -> Tuple[
@@ -94,7 +96,7 @@ def solve_system(
     if os.path.exists('reaction_code_gen.py'):
         os.remove('reaction_code_gen.py')
 
-    connections, volumes, Q_connections, _ = cstr_network
+    connections, volumes, Q_connections, _, cstr_to_element_map = cstr_network
 
     inlet_map:  Dict[int, List[Tuple[int, int]]] = defaultdict(list)
     outlet_map: Dict[int, List[Tuple[int, int]]] = defaultdict(list)
@@ -134,11 +136,12 @@ def solve_system(
                                                         c_shape,
                                                         points_per_model=1,
                                                         _ddt_reshape_shape=None,
-                                                        inlet_map=inlet_map,
                                                         cmesh=cmesh,
                                                         Q_weight_inlets=Q_weight_inlets,
+                                                        model_volumes=volumes,
                                                         points_for_bc=points_for_bc,
-                                                        t0=t_span[0])
+                                                        t0=t_span[0],
+                                                        model_to_element_map=cstr_to_element_map)
 
     args = (Q_div_v, c_shape, reactions, bcs)
 

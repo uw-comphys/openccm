@@ -22,7 +22,8 @@ Functions related to parsing the boundary and initial conditions and then genera
 and applying them to the system.
 """
 
-from typing import List, Tuple, Dict, Callable, Set
+from scipy.spatial import KDTree
+from typing import List, Tuple, Dict, Callable, Set, Optional
 from collections import defaultdict
 
 import numpy as np
@@ -38,16 +39,19 @@ BC_TEMPLATE = "@njit(inline='always', cache=True)\n" + \
               "def {}(t):\n" + \
               "    return {}\n"
 """Template for generating the boudnary condition file."""
+SYMPY_EQN_ARGS = [x, y, z, t]
+"""TODO"""
 
 
 def create_boundary_conditions(c0:                  np.ndarray,
                                config_parser:       ConfigParser,
-                               inlet_map:           Dict[int, List[Tuple[int, int]]],
-                               grouped_bcs:         GroupedBCs,
                                Q_weights:           Dict[int, List[float]],
                                points_for_bc:       Dict[int, List[int]],
                                t0:                  float,
-                               points_per_model:    int) -> None:
+                               points_per_model:    int,
+                               cmesh:               CMesh,
+                               dof_to_element_map:  List[List[Tuple[int, int, float]]],
+                               model_volumes:       np.ndarray) -> None:
     """
     CSTRs need the boundary condition in their original form since the equation for the inlets is sum (Q_in * C_in).
     PFRs however need the boundary condition in derivative form since the inlets to the PFRs produce a system of
@@ -69,27 +73,29 @@ def create_boundary_conditions(c0:                  np.ndarray,
     * c0:               The initial condition, needed in order to properly implement boundary conditions for PFR models.
                         The BC will override the IC value for the BC nodes.
     * config_parser:    OpenCCM ConfigParser for getting settings.
-    * inlet_map:        A map between the inlet ID and the ID of the PFR(s) connected to it and the connection ID.
-                        Key to dictionary is inlet ID, value is a list of tuples.
-                        First entry in tuple is the CSTR ID, second value is the connection ID.
-    * grouped_bcs:      Helper class used for consistent numbering and lookup of boundary conditions by name.
     * Q_weights:        Mapping between BC ID and a list of weights
                         The entries for each boundary condition MUST be in the same order as points_for_bc.
     * points_for_bc:    Mapping between boundary ID and the index into the state array.
                         Entries for each BC MUST be in the same order as Q_weights.
     * t0:               The starting time, needed for updating c0 if using a PFR model.
     * points_per_model: Number of discretization points per model. A value of 1 is assumed to represent a CSTR.
+    * cmesh:
+    * dof_to_element_map:
+    * model_volumes:        TODO
     """
+    def get_bc_id(_bc_name: str) -> int:
+        if 'point' in _bc_name:
+            return hash(_bc_name)
+        else:
+            return cmesh.grouped_bcs.id(_bc_name)
+
+    points_for_bc = points_for_bc.copy()
+    Q_weights     = Q_weights.copy()
     specie_names = config_parser.get_list(['SIMULATION', 'specie_names'], str)
     assert len(specie_names) == c0.shape[0]
 
     # CSTR models will only have one discretization points per model. PFRs must have at least two (inlet and outlet).
     need_time_deriv_version = points_per_model > 1
-
-    bc_id_to_index_map: Dict[int, List[int]] = defaultdict(list)
-    for bc_id, all_grouped_indicies in inlet_map.items():
-        for model_id, _ in all_grouped_indicies:
-            bc_id_to_index_map[bc_id].append(model_id)
 
     # Internal dict used to ensure that no variable is specified multiple times for each BC.
     anti_duplicate_dict: Dict[int, List[str]] = defaultdict(list)
@@ -111,21 +117,57 @@ def create_boundary_conditions(c0:                  np.ndarray,
     bcs_names_used  = set()
 
     bc_str = config_parser.get_item(['SIMULATION', 'boundary_conditions'], str)
+
+    if 'point' in bc_str:
+        # Only mapping a subset of elements: Those which have been compartmentalized AND those that DO NOT correspond
+        # to a PFR's inlet DOF. The inlet DOF would be very complicated to set properly as it requires setting the
+        # connected outlet DOFs to a value that satisfies the algebraic constraint
+        num_elements = sum(len(mapping) for dof, mapping in enumerate(dof_to_element_map) if not dof_is_pfr_inlet(dof, points_per_model))
+        dimensions = cmesh.element_centroids.shape[1]
+        points_subset = np.zeros((num_elements, dimensions))
+        subset_index_to_dof = np.empty(num_elements, dtype=np.min_scalar_type(len(dof_to_element_map)))
+        index = 0
+        for dof, mapping in enumerate(dof_to_element_map):
+            if dof_is_pfr_inlet(dof, points_per_model):  # Skip inlet DOFs for PFRs
+                continue
+            for element, _, _ in mapping:
+                subset_index_to_dof[index] = dof
+                points_subset[index] = cmesh.element_centroids[element]
+                index += 1
+        tree = KDTree(points_subset)
+
+        def nearest_dof_for_point(position) -> int:
+            return subset_index_to_dof[tree.query(position)[1]]
+
     for bc_line in bc_str.splitlines():
         specie, bc_info = [item.strip() for item in bc_line.split(':')]
         if specie not in specie_names:
             raise ValueError(f'Unknown specie: {specie} when specifying boundary condition: {bc_line}.')
 
         bc_name, bc_eqn_str = [item.strip() for item in bc_info.split('->')]
-        bcs_names_used.add(bc_name)
-        if bc_name in grouped_bcs.no_flux_names:
+        bc_is_point_ic = 'point' in bc_name
+        if bc_name in cmesh.grouped_bcs.no_flux_names:
             raise ValueError(f'BC value specified for the no-flux bc {bc_name}.')
 
-        bc_id = grouped_bcs.id(bc_name)
-        if specie in anti_duplicate_dict[bc_id]:
-            raise ValueError(f"Specie {specie} has multiple BCs specified for boundary {bc_name}.")
-        else:
-            anti_duplicate_dict[bc_id].append(specie)
+        bc_name_cleaned = bc_name
+        for char_to_remove in '().,':
+            bc_name_cleaned = bc_name_cleaned.replace(char_to_remove, '_')
+
+        bcs_names_used.add(bc_name_cleaned)
+        bc_id = get_bc_id(bc_name_cleaned)
+        if not bc_is_point_ic:
+            if specie in anti_duplicate_dict[bc_id]:
+                raise ValueError(f"Specie {specie} has multiple BCs specified for boundary {bc_name}.")
+            else:
+                anti_duplicate_dict[bc_id].append(specie)
+
+        if bc_is_point_ic:
+            dof   = nearest_dof_for_point(eval(bc_name.replace('point', '')))
+            model = int(dof / points_per_model)
+            dofs_for_bc = [model] if points_per_model == 1 else list(range(model*points_per_model+1, (model+1)*points_per_model))
+            points_for_bc[bc_id]    = dofs_for_bc
+            Q_weights[bc_id]        = [1 for _ in dofs_for_bc]
+            bc_eqn_str = f"{float(bc_eqn_str) / (0.01 * model_volumes[model])} * H(t) * H(-(t - 2*0.01))"
 
         bc_eqn = sp.parse_expr(bc_eqn_str, local_dict={"H": H})
         bc_eqn_args = bc_eqn.free_symbols
@@ -136,7 +178,7 @@ def create_boundary_conditions(c0:                  np.ndarray,
             raise ValueError(f"Boundary condition {bc_eqn} uses a variable other than t (time).")
 
         # Take time derivative if needed, and save.
-        if not need_time_deriv_version:
+        if bc_is_point_ic or not need_time_deriv_version:
             bc_dict[bc_id][specie] = parse_piecewise_heaviside_into_string(str(bc_eqn))
         else:
             bc_diff = bc_eqn.diff(t)
@@ -157,19 +199,19 @@ def create_boundary_conditions(c0:                  np.ndarray,
     # Generate one numpy array for each bc for the points called e.g. points_wall, points_inlet, etc.
     for bc_name in bcs_names_used:
         var_name = "points_" + bc_name
-        bc_file_lines.append(f"{var_name} = array({points_for_bc[grouped_bcs.id(bc_name)]})\n")
+        bc_file_lines.append(f"{var_name} = array({points_for_bc[get_bc_id(bc_name)]})\n")
     bc_file_lines.append("\n")
 
     # Generate a numpy array for each bc for the flow_weights called e.g. Q_weight_wall
     for bc_name in bcs_names_used:
         var_name = "Q_weights_" + bc_name
-        bc_file_lines.append(f"{var_name} = array({Q_weights[grouped_bcs.id(bc_name)]})\n")
+        bc_file_lines.append(f"{var_name} = array({Q_weights[get_bc_id(bc_name)]})\n")
     bc_file_lines.append("\n")
     bc_file_lines.append("\n")
 
     # Generate a single function for each bc named wall_a, wall_b, inlet_c, etc.
     for bc_name in bcs_names_used:
-        for specie_name, bc_eqn_str in bc_dict[grouped_bcs.id(bc_name)].items():
+        for specie_name, bc_eqn_str in bc_dict[get_bc_id(bc_name)].items():
             bc_file_lines.append(BC_TEMPLATE.format(f"{bc_name}_{specie_name}", str(bc_eqn_str)))
             bc_file_lines.append("\n\n")
 
@@ -180,7 +222,7 @@ def create_boundary_conditions(c0:                  np.ndarray,
         bc_file_lines.append('    pass  # No boundary conditions used')
     else:
         for bc_name in bcs_names_used:
-            for specie_name in bc_dict[grouped_bcs.id(bc_name)]:
+            for specie_name in bc_dict[get_bc_id(bc_name)]:
                 bc_file_lines.append(f"    _ddt[{specie_names.index(specie_name)}, {'points_' + bc_name}] += {bc_name}_{specie_name}(t) * {'Q_weights_' + bc_name}\n")
             bc_file_lines.append("\n")
 
@@ -190,43 +232,146 @@ def create_boundary_conditions(c0:                  np.ndarray,
         file.write("".join(bc_file_lines))
 
 
-def load_initial_conditions(config_parser: ConfigParser, c0: np.ndarray, cmesh: CMesh) -> None:
+def dof_is_pfr_inlet(dof: int, points_per_model: int) -> bool:
+    return points_per_model > 1 and dof % points_per_model == 0
+
+
+def load_initial_conditions(
+        config_parser:              ConfigParser,
+        c0:                         np.ndarray,
+        cmesh:                      CMesh,
+        dof_to_element_map:         List[List[Tuple[int, int, float]]],
+        point_per_model:            int,
+        connected_to_another_inlet: Optional[np.ndarray],
+        Q_weight:                   Optional[np.ndarray]
+) -> None:
     """
     Parse the string and load its value into the c0 array at the appropriate indices.
 
-    Assumes one line per variable.
-    All variables must have one initial condition specified, no more no less.
+    Each variable can have multiple boundary conditions specified. Three categories of BCs are available:
+    1. Spatially varying (or uniform) value over the whole domain.                  BC of the form: f(x,y,z)
+    2. Spatially varying (or uniform) value over a subset of the domain.            BC of the form: g(x,y,z) @ position predicate
+    3. A specific amount (NOT CONCENTRATION) is added at a small position in space. BC of the form: amount * point(x_p,y_p,z_p)
+
+    For each specie, multiple of each of the above categories can be specified. The categories are applied in the order
+    listed above. So if a values specified by category 3 intersects with one from category 2, the category 3 value specifies
+    the final value. In this vay, category 1 can be thought of as the default.
+
+    If multiple values are specified in a category, they are applied in the order they are found in the config file.
+    Except for category 1. There should be at most only one IC per specie of category 1.
+
+    Any degree of freedom that has not had a value specified for it will default to a value of 0.
+
+    A 0th order mapping is used for values of elements to values on DOF. The weighed average (by volume of element) of the
+    value in each DOF's elements is used to calculate the value of the DOF.
 
     Parameters
     ----------
-    * config_parser:  OpenCCM ConfigParser for getting settings.
-    * c0:             The numpy array to hold the initial condition.
+    config_parser:              OpenCCM ConfigParser for getting settings.
+    c0:                         The numpy array to hold the initial condition.
+    cmesh:                      The CMesh from which the current system was derived.
+    dof_to_element_map:
+    point_per_model:
+    connected_to_another_inlet: TODO
 
     Returns
     -------
     * Nothing is returned, c0 is modified in place.
     """
-    specie_names = config_parser.get_list(['SIMULATION', 'specie_names'], str)
+    t0           = config_parser.get_list(['SIMULATION', 't_span'],         float)[0]
+    specie_names = config_parser.get_list(['SIMULATION', 'specie_names'],   str)
+    assert len(set(specie_names)) == len(specie_names)  # Ensure no duplicates
 
-    species_without_a_ic = set(specie_names)
-    assert len(species_without_a_ic) == len(specie_names)  # Ensure no duplicates
+    ic_funcs: Dict[str, List[List[str], List[str], List[str]]] = {specie_name: [[], [], []] for specie_name in specie_names}
 
-    ic_string = config_parser.get_item(['SIMULATION', 'initial_conditions'], str)
+    bc_string = config_parser.get_item(['SIMULATION', 'boundary_conditions'], str)
+    ic_string = config_parser.get_item(['SIMULATION', 'initial_conditions'],  str)
     for ic_line in ic_string.splitlines():
-        specie, ic_func_str = [item.strip() for item in ic_line.split('->')]
+        specie, ic_funcs_str = [item.strip() for item in ic_line.split('->')]
+        if specie not in specie_names:
+            raise ValueError(f'Unknown specie: {specie} when specifying initial conditions')
 
-        if specie in species_without_a_ic:
-            species_without_a_ic.remove(specie)
+        if "point" in ic_funcs_str:
+            ic_funcs[specie][2].append(ic_funcs_str)
+        elif "@" in ic_funcs_str:
+            ic_funcs[specie][1].append(ic_funcs_str)
         else:
-            if specie in specie_names:
-                raise ValueError(f' Multiple initial conditions specified for specie {specie}')
-            else:
-                raise ValueError(f'Unknown specie: {specie} when specifying initial conditions')
+            ic_funcs[specie][0].append(ic_funcs_str)
 
-        # Turn ic into an equation and apply it to c0
-        c0[specie_names.index(specie), :] = eval(ic_func_str)
+    # Set of DOFs which don't map to an element, and therefore have to be interpolated based on neighbouring DOFs.
+    dofs_to_interpolate = {dof for dof, mapping in enumerate(dof_to_element_map) if len(mapping) == 0 and not dof_is_pfr_inlet(dof, point_per_model)}
+    if len(dofs_to_interpolate) == len(dof_to_element_map):
+        raise AssertionError(f"No DOF maps to an mesh element.")
 
-    assert len(species_without_a_ic) == 0  # All species must have an explicit IC to avoid something being missed
+    buffer = np.empty(len(cmesh.element_sizes))
+    for specie, (full_domain_strs, restricted_strs, point_mass_strs) in ic_funcs.items():
+        if len(full_domain_strs) + len(restricted_strs) + len(point_mass_strs) == 0:
+            raise ValueError(f"Initial conditions were not specified for specie: {specie}")
+
+        # 1. Handle full domain ICs
+        if len(full_domain_strs) == 0:
+            buffer[:] = 0
+        elif len(full_domain_strs) == 1:
+            full_domain_eqn = sp.lambdify(SYMPY_EQN_ARGS, full_domain_strs[0])
+            for element, (x_c, y_c, *z_c) in enumerate(cmesh.element_centroids):
+                buffer[element] = full_domain_eqn(x_c, y_c, z_c, t0)
+        else:
+            raise ValueError(f"Only one default IC value can be specified per specie."
+                             f"Specie {specie} had {full_domain_strs} specified.")
+
+        # 2. Handle spatial values
+        for restricted_str in restricted_strs:
+            eqn_str, predicate_str = restricted_str.split('@')
+            restricted_eqn, predicate_eqn = sp.lambdify(SYMPY_EQN_ARGS, eqn_str), sp.lambdify(SYMPY_EQN_ARGS, predicate_str)
+            for element, (x_c, y_c, *z_c) in enumerate(cmesh.element_centroids):
+                if predicate_eqn(x_c, y_c, z_c, t0):
+                    buffer[element] = restricted_eqn(x_c, y_c, z_c, t0)
+
+        # 3. Handle point mass by converting them to BCs which will be handled as source terms
+        for point_mass_str in point_mass_strs:
+            mass_str, point_str = point_mass_str.replace(' ', '').split('@')
+            if mass_str == '':
+                mass_str = '1.0'
+            bc_string += f"{specie}: {point_str} -> {mass_str}\n"
+
+        # 4. Interpolate back from mesh elements to degrees of freedom.
+        i_specie = specie_names.index(specie)
+        for dof, mapping in enumerate(dof_to_element_map):
+            if dof_is_pfr_inlet(dof, point_per_model):
+                continue  # Don't map anything to inlet DOFs for PFRs, handle them separately at the end
+            elif dof not in dofs_to_interpolate:
+                c0[i_specie, dof] = sum(buffer[element] for element, _, _ in mapping) / len(mapping)
+
+    # If any DOFs are not mapped to an element, interpolate them based on nearby DOFs
+    for dof in dofs_to_interpolate:
+        # 1. Find closest dof before
+        dof_before = -1
+        for i in range(dof-1, -1, -1):
+            if not dof_is_pfr_inlet(i, point_per_model) and i not in dofs_to_interpolate:
+                dof_before = i
+                break
+        # 2. Find closest dof after
+        dof_after = -1
+        for i in range(dof+1, len(dof_to_element_map)):
+            if not dof_is_pfr_inlet(i, point_per_model) and i not in dofs_to_interpolate:
+                dof_after = i
+                break
+
+        # 3. If either of the DOFs could not be found set it equal to the other
+        dof_before = dof_before if dof_before != -1 else dof_after
+        dof_after  = dof_after  if dof_after  != -1 else dof_before
+
+        # 4. Interpolate value of the two found DOFs
+        c0[:, dof] = (c0[:, dof_before] + c0[:, dof_after]) / 2
+
+    # Handle PFR inlet nodes, ensuring that algebraic equation is satisfied
+    if connected_to_another_inlet is not None:
+        for (inlet_node, _, _) in connected_to_another_inlet:
+            c0[:, inlet_node] = 0
+        for (inlet_node, connection, outlet_node) in connected_to_another_inlet:
+            c0[:, inlet_node] += Q_weight[connection] * c0[:, outlet_node]
+
+    config_parser['SIMULATION']['boundary_conditions'] = bc_string
 
 
 def parse_piecewise_heaviside_into_string(str_to_parse: str) -> str:

@@ -31,7 +31,7 @@ from typing import Callable, Dict, List, Set, Tuple, Any
 import numpy as np
 
 from ..config_functions import ConfigParser
-from ..mesh import CMesh
+from ..mesh import CMesh, create_dof_to_element_map
 
 OPENFOAM_SCALAR_HEADER = """/*--------------------------------*- C++ -*----------------------------------*\\
   =========                 |
@@ -127,35 +127,46 @@ def label_elements_openfoam(cmesh: CMesh, config_parser: ConfigParser) -> None:
     # t_span has to be loaded as a float and then converted to str so that zero gets handled correctly.
     # Asking for t_span directly as str results in 0 being returned instead of 0.0, which will cause two zero folders
     # to be created. One being 0/ created here, and the other 0.0/ created by output the concentration profile to VTK.
-    time_0 = str(config_parser.get_list(['SIMULATION', 't_span'], float)[0])
+    time_0 = config_parser.get_list(['SIMULATION', 't_span'], float)[0]
     output_file_name = str(time_0) + '/' + 'element_labels'
 
     output_folder_path = config_parser.get_item(['SETUP', 'output_folder_path'], str)
     vtu_folder_path = config_parser.get_item(['POST-PROCESSING', 'vtu_dir'], str)
+    output_folder = output_folder_path + vtu_folder_path + output_file_name
 
     # Create the output directory if it doesn't exist
-    Path(output_folder_path + vtu_folder_path + output_file_name.split("/")[-2]).mkdir(parents=True, exist_ok=True)
+    Path(output_folder_path + vtu_folder_path + str(time_0)).mkdir(parents=True, exist_ok=True)
 
-    num_elements = len(cmesh.element_sizes)
-    with open(output_folder_path + vtu_folder_path + output_file_name, 'w') as output_file:
-        # Write Header
-        output_file.write(OPENFOAM_SCALAR_HEADER.format(time_0, "element_id", num_elements))
+    write_buffer_to_file_openfoam(np.arange(len(cmesh.element_sizes)), output_folder, time_0, 'element ID', cmesh)
 
-        # Write elements
-        for i in range(num_elements):
-            output_file.write(str(i) + '\n')
-        output_file.write(')\n;\n\n')
 
-        # Write boundary info
-        output_file.write('boundaryField\n{\n')
-        for bc_name in cmesh.bc_to_facet_map.keys():
-            output_file.write(f'\t{bc_name}\n')
-            output_file.write('\t{\n')
-            output_file.write('\t\ttype\t\t\tcalculated;\n')
-            output_file.write('\t\tvalue\t\t\tuniform 0;\n')
-            output_file.write('\t}\n')
-        output_file.write('}\n\n')
-    return
+def label_models_and_dof_openfoam(cmesh: CMesh, model_to_element_map: List[List[Tuple[float, int]]], config_parser: ConfigParser) -> None:
+    points_per_pfr      = config_parser.get_item(['SIMULATION',             'points_per_pfr'],      int)
+    model_name          = config_parser.get_item(['COMPARTMENT MODELLING',  'model'],               str)
+    output_folder_path  = config_parser.get_item(['SETUP',                  'output_folder_path'],  str)
+    vtu_folder_path     = config_parser.get_item(['POST-PROCESSING',        'vtu_dir'],             str)
+
+    t0 = config_parser.get_list(['SIMULATION', 't_span'], float)[0]
+    output_file_name = str(t0) + '/' + model_name + '_labels'
+    output_file_path = output_folder_path + vtu_folder_path + output_file_name
+
+    element_to_model_map = -np.ones(len(cmesh.element_sizes), dtype=int)
+    for model, distances_element in enumerate(model_to_element_map):
+        for _, element in distances_element:
+            element_to_model_map[element] = model
+    write_buffer_to_file_openfoam(element_to_model_map, output_file_path, t0, model_name + " id", cmesh)
+
+    output_file_name = str(t0) + '/dof_labels'
+    output_file_path = output_folder_path + vtu_folder_path + output_file_name
+
+    dof_to_element_map = create_dof_to_element_map(model_to_element_map, points_per_pfr)
+
+    element_to_dof_map = -np.ones(len(cmesh.element_sizes), dtype=int)
+    for dof, mapping in enumerate(dof_to_element_map):
+        for element, _, _ in mapping:
+            element_to_dof_map[element] = dof
+
+    write_buffer_to_file_openfoam(element_to_dof_map, output_file_path, t0, "dof", cmesh)
 
 
 def label_compartments_openfoam(output_file_name: str, compartments: Dict[int, Set[int]], config_parser: ConfigParser) -> None:
@@ -235,104 +246,90 @@ def label_compartments_openfoam(output_file_name: str, compartments: Dict[int, S
                 output_file.write(line)
 
 
-def cstrs_to_vtu_and_save_openfoam(
-        system_results: Tuple[
-                            np.ndarray,
-                            np.ndarray,
-                            Dict[int, List[Tuple[int, int]]],
-                            Dict[int, List[Tuple[int, int]]]
-                        ],
-        compartments:   Dict[int, Set[int]],
-        config_parser:  ConfigParser,
-        cmesh:          CMesh) -> None:
-    """
-    Takes a time series from running a simulation on the compartment network and outputs it to native OpenFOAM format.
-    Each mesh cell is labelled based on which compartment it was a part of.
-    Cells which were not part of any compartment are labelled with -1.
-
-    Parameters
-    ----------
-    * system_results:   The simulation results to visualize (concentrations, times, inlets mapping, outlets mapping).
-    * compartments:     The compartments
-    * config_parser:    The OpenCCM ConfigParser.
-    * cmesh:            The CMesh from which the model and network were calculated.
-    """
+def export_to_vtu_openfoam(
+        concentrations_all_time:    np.ndarray,
+        ts:                         np.ndarray,
+        model_to_element_map:       List[List[Tuple[float, int]]],
+        config_parser:              ConfigParser,
+        cmesh:                      CMesh
+) -> None:
     print("Exporting simulation visualization")
 
-    output_folder_path          = config_parser.get_item(['SETUP',              'output_folder_path'],          str)
-    vtu_folder_path             = config_parser.get_item(['POST-PROCESSING',    'vtu_dir'],                     str)
-    species_names               = config_parser.get_list(['SIMULATION',         'specie_names'],                str)
-
-    element_to_compartment: Dict[int, int] = {}
-    for compartment_id, elements in compartments.items():
-        for element_id in elements:
-            element_to_compartment[element_id] = compartment_id
+    output_folder_path  = config_parser.get_item(['SETUP',              'output_folder_path'],  str)
+    vtu_folder_path     = config_parser.get_item(['POST-PROCESSING',    'vtu_dir'],             str)
+    points_per_model    = config_parser.get_item(['SIMULATION',         'points_per_pfr'],      int)
+    species_names       = config_parser.get_list(['SIMULATION',         'specie_names'],        str)
 
     num_elements = len(cmesh.element_sizes)
-    concentrations_all_time, ts, _, _ = system_results
 
-    def val_for_el(element: int, specie_id: int, i: int) -> str:
-        """Helper function to do the element-to-value lookup."""
-        if element in element_to_compartment:
-            return f"{concentrations_all_time[specie_id, element_to_compartment[element], i]}\n"
-        else:
-            return "-1.0\n"
+    dof_to_element_map = create_dof_to_element_map(model_to_element_map, points_per_model)
 
-    # Links to the original files for labeled compartments
-    post_source = os.path.abspath(os.path.join(output_folder_path + vtu_folder_path + str(ts[0]), "compartments_post"))
-    pre_source  = os.path.abspath(os.path.join(output_folder_path + vtu_folder_path + str(ts[0]), "compartments_pre"))
+    assert len(dof_to_element_map) == concentrations_all_time.shape[1]
 
-    for i, t in enumerate(ts):
-        output_folder_time = output_folder_path + vtu_folder_path + str(t)
+    # t0 will contain several visualization files that are constant in time, will symlink to them for speed and small file size
+    t0_path = os.path.join(output_folder_path + vtu_folder_path + str(ts[0]))
+    contents_of_t0 = [(file_name, os.path.abspath(os.path.join(t0_path, file_name))) for file_name in os.listdir(t0_path)]
+
+    # Initialize to -1 so that any non-compartmentalized elements can be filtered out (assuming only positive values are valid)
+    buffer = -np.ones(num_elements)
+    for i_t, t in enumerate(ts):
+        output_folder = output_folder_path + vtu_folder_path + str(t)
         # Throw an error if the folder already exists and this is not the first timestep.
-        # First timestep will be created to store element and compartment label information.
-        Path(output_folder_time).mkdir(parents=True, exist_ok=(i == 0))
+        # First timestep will have been previously created to store compartmentalization info.
+        Path(output_folder).mkdir(parents=True, exist_ok=(i_t == 0))
 
-        if i > 0:
-            try:
-                os.symlink(post_source, os.path.join(output_folder_time, "compartments_post"))
-                os.symlink(pre_source,  os.path.join(output_folder_time, "compartments_pre"))
-            except OSError:
-                shutil.copy(post_source, os.path.join(output_folder_time, "compartments_post"))
-                shutil.copy(pre_source, os.path.join(output_folder_time, "compartments_pre"))
+        if i_t > 0:
+            for file_name, original_path in contents_of_t0:
+                os.symlink(original_path, os.path.join(output_folder, file_name))
 
-        for specie_id, specie_name in enumerate(species_names):
-            with (open(output_folder_time + '/c_' + specie_name, 'w') as output_file):
-                output_file.write(OPENFOAM_SCALAR_HEADER.format(t, specie_name, num_elements))
+        for i_specie, specie in enumerate(species_names):
+            concentrations = concentrations_all_time[i_specie, :, i_t]
+            for dof, mapping in enumerate(dof_to_element_map):
+                for element, dof_other, weight_dof in mapping:
+                    buffer[element] = concentrations[dof] * weight_dof + concentrations[dof_other] * (1 - weight_dof)
 
-                for id_element in range(num_elements):  # Must write to file in sequential order of elements
-                    output_file.write(val_for_el(id_element, specie_id, i))
-
-                output_file.write(")\n"
-                                  ";\n"
-                                  "\n"
-                                  "boundaryField\n"
-                                  "{\n")
-
-                for bc_name, facets in cmesh.bc_to_facet_map.items():
-                    facet_concentration_values = []
-                    for facet in facets:
-                        facet_concentration_values.append(val_for_el(cmesh.facet_elements[facet][0], specie_id, i))
-
-                    facet_concentrations = '\t\t\t'.join(facet_concentration_values)
-
-                    output_file.write(f""
-                                      f"\t{bc_name}\n"
-                                      f"\t{{\n"
-                                      f"\t\ttype            calculated;\n"
-                                      f"\t\tvalue           nonuniform List<scalar>\n" 
-                                      f"\t\t{len(facets)}\n"
-                                      f"\t\t(\n"
-                                      f"\t\t\t{facet_concentrations}"
-                                      f"\t\t)\n"
-                                      f"\t\t;\n"
-                                      f"\t}}\n")
-
-                output_file.write("}\n"
-                                  "\n"
-                                  "// ************************************************************************* //")
-
+            write_buffer_to_file_openfoam(buffer, output_folder + '/c_' + specie, t, specie, cmesh)
     print("Done exporting simulation visualization")
+
+
+def write_buffer_to_file_openfoam(buffer: np.ndarray, output_file_path: str, t: float, variable_name: str, cmesh: CMesh) -> None:
+    with open(output_file_path, 'w') as output_file:
+        output_file.write(OPENFOAM_SCALAR_HEADER.format(t, variable_name, len(buffer)))
+
+        output_file.write('\n'.join(str(entry) for entry in buffer))
+
+        output_file.write(
+            ")\n"
+            ";\n"
+            "\n"
+            "boundaryField\n"
+            "{\n"
+        )
+
+        for bc_name, facets in cmesh.bc_to_facet_map.items():
+            facet_concentration_values = []
+            for facet in facets:
+                facet_concentration_values.append(f"{buffer[cmesh.facet_elements[facet][0]]}\n")
+
+            facet_concentrations = '\t\t\t'.join(facet_concentration_values)
+
+            output_file.write(f""
+                              f"\t{bc_name}\n"
+                              f"\t{{\n"
+                              f"\t\ttype            calculated;\n"
+                              f"\t\tvalue           nonuniform List<scalar>\n"
+                              f"\t\t{len(facets)}\n"
+                              f"\t\t(\n"
+                              f"\t\t\t{facet_concentrations}"
+                              f"\t\t)\n"
+                              f"\t\t;\n"
+                              f"\t}}\n")
+
+        output_file.write(
+            "}\n"
+            "\n"
+            "// ************************************************************************* //"
+        )
 
 
 def cstrs_to_vtu_and_save_opencmp(
@@ -417,7 +414,9 @@ def pfrs_to_vtu_and_save_opencmp(system_results:    Tuple[
                                                         Dict[int, Tuple[Dict[int, int], Dict[int, int]]],
                                                         np.ndarray,
                                                         np.ndarray,
-                                                        Dict[int, List[int]]],
+                                                        Dict[int, List[int]],
+                                                        List[List[Tuple[float, int]]]
+                                                    ],
                                  compartments:      Dict[int, Set[int]],
                                  config_parser:     ConfigParser,
                                  mesh:              'ngsolve.Mesh',
@@ -450,7 +449,7 @@ def pfrs_to_vtu_and_save_opencmp(system_results:    Tuple[
 
 
     y, ts, _, _ = system_results
-    connections, volume_pfrs, q_connections, compartment_to_pfr_map = pfr_network
+    connections, volume_pfrs, q_connections, compartment_to_pfr_map, pfr_to_element_map = pfr_network
     all_elements = [e for e in mesh.Elements()]
 
     fes = L2(mesh, order=0)

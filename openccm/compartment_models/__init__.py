@@ -42,7 +42,8 @@ def create_model_network(model:                 str,
             Dict[int, Tuple[Dict[int, int], Dict[int, int]]],
             np.ndarray,
             np.ndarray,
-            Dict[int, List[int]]
+            Dict[int, List[int]],
+            List[List[Tuple[float, int]]]
         ]:
     """
     Helper function to clean up call sites.
@@ -53,15 +54,40 @@ def create_model_network(model:                 str,
     ----------
     * model:                The kind of model to use for building the network, 'pfr' or 'cstr'.
     * compartments:         The element IDs that make up each compartment, indexed by compartment ID.
-    * compartment_network:  The compartment_network created from the compartments.
+    * compartment_network:  A dictionary representation of the compartments in the network.
+                            Keys are compartment IDs, and whose values are dictionary.
+                            -   For each of those dictionaries, the keys are the index of a neighboring compartment
+                                and the values are another dictionary.
+                                -   For each of those dictionaries, the keys are the index of the bounding entity
+                                    between the two compartments, and the values Tuples.
+                                    - The 1st is the index of the element upwind of that boundary facet.
+                                    - The 2nd is the outward facing unit normal for that boundary facet.
     * mesh:                 The CMesh from which the compartments were built.
-    * dir_vec:              The direction vector in each mesh element, indexed by element ID.
-    * flows_and_upwind:     The flow through each ID and indicator of which way is upwind, indexed by facet ID.
-    * config_parser:        OpenCCM ConfigParser to use.
+    * dir_vec:              Numpy array of direction vectors, row i is for element i.
+    * flows_and_upwind:     2D object array indexed by facet ID.
+                            - 1st column is volumetric flowrate through facet.
+                            - 2nd column is a flag indicating which of a facet's elements are upwind of it.
+                                - 0, and 1 represent the index into mesh.facet_elements[facet]
+                                - -1 is used for boundary elements to represent
+    * config_parser:        The OpenCCM ConfigParser to use.
 
     Returns
     -------
-    * model_network: The created network object.
+    1. connections:                 A dictionary representing the model network.
+                                    The keys are the IDs of each model, the values are tuples of two dictionaries.
+                                    - The first dictionary is for the inlet(s) of the model.
+                                    - The second dictionary is for the outlet(s) of the model.
+                                    For both dictionaries, the key is the connection ID
+                                    and the value is the ID of the model on the other end of the connection.
+    2. volumes:                     A numpy array of the volume of each model indexed by its ID.
+    3. volumetric_flows:            A numpy array of the volumetric flowrate through each connection indexed by its ID.
+    4. compartment_to_model_map:    A map between a compartment ID and the model IDs of all models in it.
+                                    The PFR IDs are stored in the order in which they appear
+                                    (i.e. the most upstream model is first, and the most downstream model is last).
+                                    For CSTRs, this will be a 1-to-1 mapping since it's 1 CSTR per compartment.
+    5. model_to_element_map:        A mapping between model ID and an ordered list of tuples containing:
+                                    (distance_along_compartment, element_id) where distance along compartment is a
+                                    float in the range of [0, 1].
     """
     if model == 'pfr':
         return create_pfr_network(compartments, compartment_network, mesh, flows_and_upwind, dir_vec, config_parser)
