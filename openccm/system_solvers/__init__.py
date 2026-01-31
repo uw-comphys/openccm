@@ -23,9 +23,11 @@ All functions related to running a simulation on the PFR/CSTR network.
 
 import os
 import sys
+import importlib
 from typing import Tuple, Dict, List, Optional, Callable
 
 import numpy as np
+import sympy as sp
 
 from .cstr_system import solve_system as solve_cstr
 from .pfr_system import solve_system as solve_pfr
@@ -89,26 +91,27 @@ def load_and_prepare_bc_ic_and_rxn(config_parser:               ConfigParser,
                                    points_for_bc:               Dict[int, List[int]],
                                    t0:                          float,
                                    model_to_element_map:        List[List[Tuple[float, int]]],
-                                   connected_to_another_inlet:  Optional[np.ndarray]=None,
-                                   Q_weight:                    Optional[np.ndarray]=None
-                                   ) -> Tuple[Callable, Callable, np.ndarray]:
+                                   connected_to_another_inlet:  Optional[np.ndarray] = None,
+                                   Q_weight:                    Optional[np.ndarray] = None
+                                   ) -> Tuple[Callable, Callable, np.ndarray, Dict[int, Dict[int, sp.Expr]]]:
     """
     Wrapper function for creating the initial condition array and applying the initial and boundary conditions to it.
 
     Parameters
     ----------
-    * config_parser:        OpenCCM ConfigParser used for getting settings.
-    * c_shape:              The shape for the concentration array at each timestep (num_species, num_points).
-    * points_per_model:     Number of discretization points per model (1 for CSTR, >2 for PFR).
-    * _ddt_reshape_shape:   Shape needed by _ddt for PFR systems so that the inlet node does not have a reaction
-                            occurring at it. Used by `generate_reaction_system`.
-    * cmesh:                The CMesh from which the model being simulated was derived.
-    * Q_weight_inlets:      Lookup all Q_connection / Q_reactor_total for each inlet BC connection.
-    * model_volumes:        TODO
-    * points_for_bc:        Lookup for all discretization points on an inlet BC, index by BC ID. Same ordering as Q_weight_inlets.
-    * t0:                   Initial timestep, needed in order to evaluate the BCs at the first timestep if a PFR is used.
-    * model_to_element_map: TODO
-    * connected_to_another_inlet: For a PFR network, this specif
+    * config_parser:                OpenCCM ConfigParser used for getting settings.
+    * c_shape:                      The shape for the concentration array at each timestep (num_species, num_points).
+    * points_per_model:             Number of discretization points per model (1 for CSTR, >2 for PFR).
+    * _ddt_reshape_shape:           Shape needed by _ddt for PFR systems so that the inlet node does not have a reaction
+                                    occurring at it. Used by `generate_reaction_system`.
+    * cmesh:                        The CMesh from which the model being simulated was derived.
+    * Q_weight_inlets:              Lookup all Q_connection / Q_reactor_total for each inlet BC connection.
+    * model_volumes:                The volume of each PFR/CSTR, indexed by their ID.
+    * points_for_bc:                Lookup for all discretization points on an inlet BC, index by BC ID. Same ordering as Q_weight_inlets.
+    * t0:                           Initial timestep, needed in order to evaluate the BCs at the first timestep if a PFR is used.
+    * model_to_element_map:         Mapping between model ID and a list of ordered tuples (distance_in_model, element ID)
+    * connected_to_another_inlet:   For a PFR network, this specif
+    * Q_weight:
 
     Returns
     -------
@@ -125,30 +128,29 @@ def load_and_prepare_bc_ic_and_rxn(config_parser:               ConfigParser,
     c0 = np.zeros(c_shape)
 
     load_initial_conditions(config_parser, c0, cmesh, dof_to_element_map, points_per_model, connected_to_another_inlet, Q_weight)
-    create_boundary_conditions(c0, config_parser, Q_weight_inlets, points_for_bc, t0, points_per_model, cmesh, dof_to_element_map, model_volumes)
-    generate_reaction_system(config_parser, _ddt_reshape_shape)
+    bc_file_name, bc_dict_for_eval = create_boundary_conditions(c0, config_parser, Q_weight_inlets, points_for_bc, t0, points_per_model, cmesh, dof_to_element_map, model_volumes)
+    rxn_file_name = generate_reaction_system(config_parser, dof_to_element_map, _ddt_reshape_shape)
 
     c0 = c0.ravel()  # Required since solve_ivp needs 1D array
 
     # Add working directory to path so that imports can be found
-    working_directory_abs_path = os.getcwd() + '/' + config_parser.get_item(['SETUP', 'working_directory'], str)
-    sys.path.append(working_directory_abs_path)
+    tmp_directory_abs_path = os.getcwd() + '/' + config_parser.get_item(['SETUP', 'tmp_folder_path'], str)
+    sys.path.append(tmp_directory_abs_path)
 
     # If the reaction module has previous been imported, need to remove it for the import statement to do anything.
-    if 'reaction_code_gen' in sys.modules:
-        sys.modules.pop('reaction_code_gen')
-    # noinspection PyUnresolvedReferences
-    import reaction_code_gen
+    if rxn_file_name in sys.modules:
+        sys.modules.pop(rxn_file_name)
+    rxn_module = importlib.import_module(rxn_file_name)
 
     # If the bc module has previous been imported, need to remove it for the import statement to do anything.
-    if 'bc_code_gen' in sys.modules:
-        sys.modules.pop('bc_code_gen')
-    # noinspection PyUnresolvedReferences
-    import bc_code_gen
+    if bc_file_name in sys.modules:
+        sys.modules.pop(bc_file_name)
+    bc_module = importlib.import_module(bc_file_name)
 
     # Remove the working directory to not pollute sys.path
     # so that consecutive runs from the same Python process find the correct files to import.
     # Don't pop last just in case another import happened inbetween
-    sys.path.pop(sys.path.index(working_directory_abs_path))
+    sys.path.pop(sys.path.index(tmp_directory_abs_path))
 
-    return reaction_code_gen.reactions, bc_code_gen.boundary_conditions, c0
+    # noinspection PyUnresolvedReferences
+    return rxn_module._reactions, bc_module._boundary_conditions, c0, bc_dict_for_eval

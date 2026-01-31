@@ -1,0 +1,35 @@
+[INPUT]
+opencmp_config_file_path    = ../../input_data_generation/config_hydrodynamics
+opencmp_sol_file_path       = ../../input_data_generation/output/ins_sol/ins_0.0.sol
+num_refinements             = 0
+min_magnitude_threshold     = 6e-5
+
+no_flux_names       = None
+ignored_names       = ("top", "bottom")
+domain_inlet_names  = ("left",)
+domain_outlet_names = ("right",)
+
+[COMPARTMENTALIZATION]
+min_compartment_size = 0.999
+bc_names_for_seeds  = ("left",)
+
+[COMPARTMENT MODELLING]
+model = CSTR
+
+[SIMULATION]
+run                 = True
+rtol                = 1e-13
+atol				= 1e-13
+t_span              = 0, 50
+specie_names        = X, s
+reactions_file_path = reactions
+initial_conditions  = X -> 0.3
+                      s -> 0.01
+boundary_conditions = X: left -> 0
+                      s: left -> 1
+
+[POST-PROCESSING]
+inlet_bc_name          = left
+outlet_bc_name         = right
+output_VTK             = False
+

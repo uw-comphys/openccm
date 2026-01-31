@@ -23,163 +23,254 @@ for the simulations.
 """
 
 import inspect
-from string import ascii_lowercase as alphabet
-from typing import List, Dict, Optional, Tuple
+from pathlib import Path
 
 import numpy as np
+from pyparsing import Combine, Group, Literal, ParseResults, Suppress, Word, ZeroOrMore, nums, alphas, OneOrMore
+from typing import List, Dict, Optional, Tuple
+
+from ..config_functions import ConfigParser
+from configparser import ConfigParser as ConfigParserPlain
+
 import pyparsing as pp
 import sympy as sp
 
+from ..io import read_mesh_data
 
-def generate_reaction_system(config_parser: 'ConfigParser', _ddt_reshape_shape: Optional[Tuple[int, int, int]]) -> None:
+
+def generate_reaction_system(config_parser: ConfigParser,
+                             dof_to_element_map: List[List[Tuple[int, int, float]]],
+                             _ddt_reshape_shape: Optional[Tuple[int, int, int]]
+                             ) -> str:
     """
     Main function that handles support for systems of chemical reactions. In order, this function:
-    1. Performs an initial parsing of the reactions configuration file based on the two main headers, [REACTIONS] and [RATES].
+    1. Performs an initial parsing of the reactions configuration file based on the two main headers, [REACTIONS] and [RATE CONSTANTS].
     2. Parses reactions (and associated rates) in the same species order as they appear specified in the main configuration file.
     3. Creates a runtime-generated function containing the differential reaction system of equations for each specie which contributes to overall mass balance.
 
     Parameters
     ----------
-    * config_parser:      OpenCCM ConfigParser which contains configuration file information and location (i.e. relative path).
-    * _ddt_reshape_shape: Shape needed by _ddt for PFR systems so that the inlet node does not have a reaction occurring at it. Used by `create_reaction_code`
-    """
-    input_file    = config_parser.get_item(['SIMULATION', 'reactions_file_path'], str)
-    rxn_species   = config_parser.get_list(['SIMULATION', 'specie_names'],        str)
-    rxn_file_path = config_parser.get_item(['SETUP', 'working_directory'],        str) + '/reaction_code_gen.py'
-
-    # Create dummy file if no reactions specified
-    if input_file == 'None':
-        with open(rxn_file_path, 'w') as file:
-            file.write("from numba import njit\n\n\n")
-            file.write("@njit\n")
-            file.write("def reactions(C, _ddt):\n")
-            file.write("    return\n\n")
-        return
-
-    # If reactions are specified, read each line in reactions configuration file
-    with open(input_file, 'r') as file:
-        all_lines = file.readlines()
-    
-    # Get [REACTIONS] and [RATES] header locations (since this can be unordered)
-    reactions_header = all_lines.index('[REACTIONS]\n')
-    rates_header     = all_lines.index('[RATES]\n')
-
-    # Do not assume that reactions come before rates (as provided in the examples)
-    if reactions_header < rates_header:
-        all_reactions = all_lines[reactions_header+1:rates_header]
-    else: 
-        all_reactions = all_lines[reactions_header+1:]
-    # Strip any preceeding, middle, and trailing whitespaces
-    all_reactions = [rxn.strip() for rxn in all_reactions if rxn.strip()]
-        
-    # Generate reaction system if applicable (i.e. if any reactions are given)
-    if all_reactions:
-        # Again handle ordering of reactions config file headers
-        if reactions_header < rates_header:
-            all_rates = all_lines[rates_header+1:]
-        else: 
-            all_rates = all_lines[rates_header+1:reactions_header]
-        # Strip any preceeding, middle, and trailing whitespaces
-        all_rates = [rate.strip() for rate in all_rates if rate.strip()]
-
-        # Get a dictionary with all reaction information first 
-        rxn_book = organize_reactions_input(rxn_species, all_reactions, all_rates)
-
-        # Send all reaction and rate information into parser to create system of equations
-        reaction_eqns = parse_reactions(rxn_species, rxn_book)
-
-    # Otherwise, run a tracer experiment (species present but no chemical reactions occur)
-    else:
-        reaction_eqns = []
-
-    # Generate runtime function containing differential reaction system of equations for mass balance.
-    create_reaction_code(rxn_species, reaction_eqns, rxn_file_path, _ddt_reshape_shape)
-
-
-def organize_reactions_input(specie_order: List[str], all_reactions: List[str], all_rates: List[str]) -> Dict[str, List[str]]:
-    """
-    This function first performs several checks to ensure that the reactions config file was handled correctly by the user. 
-    If successful, it breaks down the provided reactions and rates into an organized dictionary where each key is a reaction ID and the values are a length 2 list, where list is [reaction, rate].
-    It also transforms the given chemical species into dummy specie names, which is much easier for the parser in parse_reactions() to handle. 
-
-    Parameters
-    ----------
-    * specie_order:     The ordered species as written in the main configuration file.
-                        Must match the same types of species present in reactions config file.
-    * all_reactions:    The partially-parsed reactions as extracted from reactions configuration file.
-    * all_rates:        The partially-parsed reaction rates as extracted from reactions configuration file.
+    * config_parser:        OpenCCM ConfigParser which contains configuration file information and location (i.e. relative path).
+    * dof_to_element_map:   Mapping between degree of freedom and the ordered lists of tuples representing the elements
+                            that this dof maps to. Tuple contains (element ID, dof_other, weight_this).
+                            dof_other and weight_this are used for a linear interpolation of value between the value of
+                            this dof and the nearest (dof_other).
+    * _ddt_reshape_shape:   Shape needed by _ddt for PFR systems so that the inlet node does not have a reaction occurring at it. Used by `create_reaction_code`
 
     Returns
     -------
-    * rxn_book: A dictionary that contains each reaction and their chemical species / rate constants.
-    """ 
+    * rxn_file_name:        The file name, without the .py, in which the reactions are saved.
+    """
+    input_file      = config_parser.get_item(['SIMULATION', 'reactions_file_path'], str)
+    rxn_species     = config_parser.get_list(['SIMULATION', 'specie_names'],        str)
+    tmp_folder_path = config_parser.get_item(['SETUP', 'tmp_folder_path'],          str)
 
-    # Parse the reaction ids (i.e. R1, R2 etc) from the actual reactions and associated rates. These are needed for proper input checking.
-    rate_ids = [rate.split(':')[0].strip() for rate in all_rates]
-    rxn_ids = [rxn.split(':')[0].strip() for rxn in all_reactions]
-    rxn_rxns = [rxn.split(':')[1].replace(" ", "") for rxn in all_reactions]
+    if input_file == 'None':
+        # Create dummy file if no reactions specified
+        rxn_file_name = 'reaction_code_gen_blank'
+        rxn_file_path = tmp_folder_path + '/' + rxn_file_name + '.py'
+        with open(rxn_file_path, 'w') as file:
+            file.write("from numba import njit\n")
+            file.write("from numpy import *\n\n\n")
+            file.write("@njit\n")
+            file.write("def _reactions(C, _ddt):\n")
+            file.write("    return\n\n")
+    else:
+        rxn_config_parser = ConfigParserPlain()
+        rxn_config_parser.optionxform = str  # Case-sensitive parsing of keys
+        rxn_config_parser.read(input_file)
 
-    # This section enforces proper input of reactions configuration file.
+        all_reactions:      Dict[str, str]  = dict(rxn_config_parser['REACTIONS'])      if rxn_config_parser.has_section('REACTIONS')       else {}
+        all_rate_constants: Dict[str, str]  = dict(rxn_config_parser['RATE CONSTANTS']) if rxn_config_parser.has_section('RATE CONSTANTS')  else {}
+        extra_terms_str:    Dict[str, str]  = dict(rxn_config_parser['EXTRA TERMS'])    if rxn_config_parser.has_section('EXTRA TERMS')     else {}
+
+        rxn_file_name = f'reaction_code_gen_{hash(config_parser)}_{[hash(tuple(all_reactions.items())), hash(tuple(all_rate_constants.items())), hash(tuple(extra_terms_str.items()))]}'
+        rxn_file_path = tmp_folder_path + '/' + rxn_file_name + '.py'
+
+        reaction_eqns           = parse_reactions(all_reactions, all_rate_constants) if all_reactions else {}
+        extra_terms_for_file    = generate_extra_terms_for_reactions(config_parser, dof_to_element_map, extra_terms_str, _ddt_reshape_shape)
+
+        # Generate runtime function containing differential reaction system of equations for mass balance.
+        create_reaction_code(rxn_species, reaction_eqns, rxn_file_path, extra_terms_for_file, _ddt_reshape_shape)
+
+    return rxn_file_name
+
+
+def generate_extra_terms_for_reactions(config_parser:       ConfigParser,
+                                       dof_to_element_map:  List[List[Tuple[int, int, float]]],
+                                       extra_terms_str:     Dict[str, str],
+                                       _ddt_reshape_shape:  Optional[Tuple[int, int, int]]) -> str:
+    """
+    Helper function for converting the expressions for the extra terms into runnable code for the reaction file.
+
+    Three types of expressions are supported:
+
+    1.  A closed form expression, potentially involving math operations For example:
+
+            a: 3
+            b: sin(2*pi/0.12)
+
+    2.  A closed form expression involving **other extra terms**. For example:
+
+            radius: 10
+            area:   pi * radius**2
+
+    **Note: The order of terms is important. A term must be first defined before being used.**
+    The above example is valid, but the example below is **not** valid since `radius` is used before being defined.
+
+            area:   pi * radius**2
+            radius: 10
+
+    3.  Load a result in the native format of the CFD software used for creating the hydrodynamics.
+        The format is:
+
+            CFD, file_name
+
+        The CFD keyword specifies to read the specific file in the CFD's native format.
+        The file is assumed to in the same folder as the hydrodynamics result.
+        Those results are then mapped to a numpy array that is indexed by the global degree of freedom.
+
+    Parameters
+    ----------
+    * config_parser:        OpenCMP config parser to read values from.
+    * dof_to_element_map:   Mapping between degree of freedom and the ordered lists of tuples representing the elements
+                            that this dof maps to. Tuple contains (element ID, dof_other, weight_this).
+                            dof_other and weight_this are used for a linear interpolation of value between the value of
+                            this dof and the nearest (dof_other).
+    * extra_terms_str:      Mapping between the name of the extra terms and the string representation of their value.
+    * _ddt_reshape_shape:   Shape needed by _ddt for PFR systems so that the inlet node does not have a reaction occurring at it.
+
+    Returns
+    -------
+    * A string representation for the python code required for loading these extra terms by the reaction file.
+    """
+    if _ddt_reshape_shape:
+        _ddt_reshape_shape = _ddt_reshape_shape[1:]  # 1st index is number of species, letting broadcasting take care of that
+
+    i_to_interpolate: List[int]         = []
+    elements_for_dof: List[List[int]]   = []
+    for i, mapping in enumerate(dof_to_element_map):
+        if len(mapping) == 0:
+            i_to_interpolate.append(i)
+        elements_for_dof.append([element for element, _, _ in mapping])
+
+    def partition_i(i_to_interpolate: List[int], elements_for_dof: List[List[int]]) -> Tuple[List[int], List[int], List[int]]:
+        i_left, i_middle, i_right = [], [], []
+        j = 0
+        while j < len(i_to_interpolate):
+            i = i_to_interpolate[j]
+            if i == 0:
+                if len(elements_for_dof[1]) > 0:
+                    i_right.append(i_to_interpolate.pop(j))
+                    continue
+            elif i == len(elements_for_dof) - 1:
+                if len(elements_for_dof[-2]) > 0:
+                    i_left.append(i_to_interpolate.pop(j))
+                    continue
+            else:
+                left = len(elements_for_dof[i-1]) > 0
+                right = len(elements_for_dof[i+1]) > 0
+                if left and right:
+                    i_middle.append(i_to_interpolate.pop(j))
+                    continue
+                elif left:
+                    i_left.append(i_to_interpolate.pop(j))
+                    continue
+                elif right:
+                    i_right.append(i_to_interpolate.pop(j))
+                    continue
+            j += 1
+
+        return i_left, i_middle, i_right
+
+    while i_to_interpolate:
+        # i_to_interpolate is shrunk by partition_i on each iteration, eventually it will be empty.
+        left, middle, right = partition_i(i_to_interpolate, elements_for_dof)
+        for i in middle:  # 1. Interpolate all entries which have two full neighbours
+            elements_for_dof[i] = elements_for_dof[i - 1] + elements_for_dof[i + 1]
+        for i in left:  # 2. Interpolate all entries which have a neighbour to their left
+            elements_for_dof[i] = elements_for_dof[i - 1]
+        for i in right:  # 3. Interpolate all entries which have a neighbour to their right
+            elements_for_dof[i] = elements_for_dof[i + 1]
+
+    OpenCMP = config_parser.get('INPUT', 'opencmp_sol_file_path', fallback=None) is not None
+
+    if not OpenCMP:
+        openfoam_sol_folder_path    = config_parser.get_item(['INPUT', 'openfoam_sol_folder_path'], str)
+        sim_folder_to_use           = config_parser.get('INPUT', 'openfoam_sim_folder_to_use')
+        openfoam_sim_folder_path    = openfoam_sol_folder_path + sim_folder_to_use
+
+    tmp_folder_path = config_parser.get_item(['SETUP', 'tmp_folder_path'], str)
+
+    points_per_pfr  = config_parser.get_item(['SIMULATION', 'points_per_pfr'], int)
+    model           = config_parser.get_item(['COMPARTMENT MODELLING', 'model'], str)
+
+    if 'CFD' in extra_terms_str:
+        raise KeyError("'CFD' is reserved and cannot be used as the name for an extra variable, "
+                       "please use a different name, or change the capitalization.")
+
+    tmp_buffer = np.zeros(len(dof_to_element_map))
+    extra_terms_for_file = []
+    np.seterr(all='raise')
+    for name, expression in extra_terms_str.items():
+        if expression[:3] == 'CFD':
+            if OpenCMP:
+                raise NotImplementedError('Loading of arbitrary OpenCMP results not supported.')
+            numpy_name = f"{name}_{model}_{points_per_pfr}.npy"
+
+            file_name = expression.split(',')[1].replace(' ', '')
+            if not Path(f"{tmp_folder_path}{numpy_name}").exists():
+                data = read_mesh_data(openfoam_sim_folder_path + '/' + file_name, float)
+                for i, mapping in enumerate(elements_for_dof):
+                    tmp_buffer[i] = np.mean(data[mapping])
+                if _ddt_reshape_shape:
+                    buffer_view_to_save = tmp_buffer.reshape(_ddt_reshape_shape)[..., 1:]  # [..., 1:] to remove first DOF since those are handled seperately
+                else:
+                    buffer_view_to_save = tmp_buffer
+                np.save(f"{tmp_folder_path}{numpy_name}", buffer_view_to_save)
+            extra_terms_for_file.append(f"{name} = np.load('{tmp_folder_path}{numpy_name}')")
+        else:
+            extra_terms_for_file.append(f"{name} = {expression}")
+    return '\n'.join(extra_terms_for_file)
+
+
+def _organize_reactions_input(all_reactions:      Dict[str, str],
+                              all_rate_constants: Dict[str, str]) -> List[Tuple[str, str]]:
+    """
+    This function first performs several checks to ensure that the reactions config file was handled correctly by the user. 
+    If successful, it combines the reactions and rate constants into a list of paired values.
+
+    Parameters
+    ----------
+    * all_reactions:        The partially-parsed reactions as extracted from reactions configuration file.
+    * all_rate_constants:   The partially-parsed reaction rates as extracted from reactions configuration file.
+
+    Returns
+    -------
+    * rxn_book:     List of (rxn equation, rate constant) pairings.
+    """
+    # Validity checks on the input
+    rxn_ids = list(all_reactions.keys())
+    rate_ids = list(all_rate_constants.keys())
     # 1. Duplicate reaction or rate labels are present (i.e., 2 or more definitions for a reaction or rate expression). These definitions must be unique
-    if (len(rxn_ids) != np.unique(rxn_ids).size) or (len(rate_ids) != np.unique(rate_ids).size):
+    if (len(rxn_ids) != len(set(rxn_ids))
+            or len(rate_ids) != len(set(rate_ids))):
         raise RuntimeError("Duplicate reaction and/or rate labels detected. Check reactions configuration file.")
     # 2. If the number of unique reaction IDs does not equal rate IDs, then there are missing reactions or rates
-    elif np.unique(rxn_ids).size != np.unique(rate_ids).size:
+    elif len(rxn_ids) != len(rate_ids):
         raise RuntimeError("Number of reactions does not match number of rates (or their reaction IDs are different). Check reactions configuration file.")
-    # 3. Catches duplicate reactions listed in the reactions config file
-    elif len(rxn_rxns) != np.unique(rxn_rxns).size:
-        raise RuntimeError("Duplicate reactions detected. Check reactions configuration file.")
-    # 4. Each reaction does not have a related rate
+    # 3. Each reaction does not have a related rate
     elif sorted(rxn_ids) != sorted(rate_ids):
         raise RuntimeError("Cannot find rate for one or more reactions. Check that reaction and rate IDs align.")
-    # If no issues, delete the reaction ids and temp reactions as they are no longer needed
-    else:
-        del rxn_ids, rxn_rxns
 
-    # Prepare rate constants by separating from reaction IDs (i.e. 'R1: 5' --> '5')
-    rate_vals = [rate.split(':')[1].strip() for rate in all_rates]
-
-    # Create rate dictionary with appropriate reaction IDs
-    rate_book = dict(zip((rate_ids), (rate_vals)))
-
-    # Get dictionary for reactions with rates which will complete the parsing of reactions config file
-    rxn_book = {} 
-    for _, rxn in enumerate(all_reactions):
-        curr_key = rxn.split(':')[0]
-        rxn_book.setdefault(curr_key, [])
-        
-        # Append actual reaction to book
-        rxn_book[curr_key].append(rxn.split(':')[1].strip())
-
-        # Check #5 - rate constant must be a number. Note that since we also allow 'AeB' format (A x 10^B) then we need a try/except since isnumeric() and isdigit() will not work.
-        try: 
-            float(rate_book.get(curr_key))
-        except Exception as e:
-            raise ValueError(f"{e}. Please check that rate constants are numeric in reactions config.")
-        # If rate constant is numeric, then append to reaction book
-        rxn_book[curr_key].append(rate_book.get(curr_key))
-
-    # Create mapping of species to dummy specie names which is much easier for parsing process
-    specie_order_dummy = list(alphabet[0:len(specie_order)])
-    dummy_map = dict(zip(specie_order, specie_order_dummy))
-    rxn_book_keys = list(rxn_book.keys())
-    for key in rxn_book_keys:
-        # get current reaction
-        rxn = rxn_book[key][0]
-        for spec in specie_order:
-            # replace species with dummy specie names
-            rxn = rxn.replace(spec, dummy_map[spec])
-        
-        # assign transformed reaction back to master reaction book
-        rxn_book[key][0] = rxn
-
+    rxn_book: List[Tuple[str, str]] = [(rxn_eqn, all_rate_constants[rxn_id]) for rxn_id, rxn_eqn in all_reactions.items()]
     return rxn_book
 
 
-def parse_reactions(specie_order: List[str], rxn_book: Dict[str, List[str]]) -> List[str]:
+def parse_reactions(all_reactions:      Dict[str, str],
+                    all_rate_constants: Dict[str, str]) -> Dict[str, str]:
     """
     Parses all reactions and rates and creates the differential reaction system of equations.
-    Also enforces specific ordering of system of equations based on species in specie_order (i.e. from main config file).
     See the Notes section below for further description of expectations and limitations of the reactions configuration parser.
 
     Notes
@@ -187,136 +278,124 @@ def parse_reactions(specie_order: List[str], rxn_book: Dict[str, List[str]]) -> 
     -   The reaction parser only supports forward (written) reactions (i.e. use of ->).
         Reversible reactions must be written as two independent reactions with their associated rate constants.
     -   The reactions parser can parse the general reaction: aA1 + bB2 + [...] -> gG7 + hH8 + [...].
-    -   All chemical species can be alphanumeric with underscores (if desired),
-        but cannot contain +/- symbols (i.e. for ions) in the specie name.
-        -   We recommend using "_m" or "_p" for + and - ions, respectively.
-            I.e.: Na+ should be written as Na_p in the reactions and main configuration file.
+    -   All chemical species must be alphanumeric.
+        -   We recommend using "m" or "p" for + and - ions, respectively.
+            I.e.: Na+ should be written as Nap in the reactions and main configuration file.
 
     An appropriate reactions configuration file for the reversible reaction N2O4 <-> 2NO2 with k_f = 1e-2 and k_r = 3e-4 (these are hypothetical rates) would be:
         [REACTIONS]
         R1: N2O4 -> 2NO2
         R2: 2NO2 -> N2O4
 
-        [RATES]
+        [RATE CONSTANTS]
         R1: 1e-2
         R2: 3e-4
 
     Parameters
     ----------
-    * specie_order: The ordered species as written in the main configuration file.
-                    Must match the same types of species present in reactions config file.
-    * rxn_book:     A dictionary that contains each reaction and their chemical species / rate constants.
+    * all_reactions:        Mapping between reaction number and the unparsed reaction.
+    * all_rate_constants:   Mapping between reaction number and the unparsed rate constant.
 
     Returns
     -------
-    * reaction_eqns:    List containing the system of differential equations in the same order of species
-                        as they appear in specie_order. I.e. if specie_order = [a, b] --> reaction_eqns = [da/dt, db/dt].
+    * de_eqns:  Mapping between specie name and the net reaction rate.
     """
+
+    def to_dict(rxn_parsed: ParseResults) -> Dict[str, str]:
+        """
+        Convert the pyparsing result into a dictionary.
+        Supports one of two formats for each item in rxn_parsed:
+        1. Explicit coefficient: ['a', 'A']
+        2. Implicit coefficient: ['A']
+
+        where:
+        - A: A chemical specie in the reaction
+        - a: coefficient for specie A
+
+        When converting to the dictionary version all implicit coefficients will be made explicit using a value of '1'.
+
+        Parameters
+        ----------
+        * rxn_parsed: Pyparsing result with potential implicit coefficients
+
+        Returns
+        -------
+        * rxn_dict: Mapping between specie and its coefficient.
+        """
+
+        rxn_dict = {}
+        for term in rxn_parsed:
+            if len(term) == 1:  # Implicit coefficient
+                rxn_dict[term[0]] = '1'
+            else:  # Explicit coefficient
+                rxn_dict[term[1]] = term[0]
+
+        return rxn_dict
+
+    def update_lhs_rhs(de_eqn:          Dict[str, str],
+                       side_dict:       Dict[str, str],
+                       reactants_dict:  Dict[str, str],
+                       rate_const:      str,
+                       sign:            str) -> None:
+        """
+        Helper function to convert the species, coefficients, and rate constants into net reaction rate for each specie,
+        one side of each reaction at a time.
+
+        Parameters
+        ----------
+        * de_eqn:           Mapping between species and their net reaction rate.
+        * side_dict:        Mapping between species and their stoichiometric coefficients for this half of the reaction.
+        * reactants_dict:   Mapping between species and their stoichiometric coefficients for the reactants of this reaction.
+        * rate_const:       The rate constant for this reaction.
+        * sign:             Whether a negative sign needs to be added to the rate, such as for products.
+
+        Returns
+        -------
+        * Nothing. `lhs` and `rhs` are updated in-place.
+        """
+        for specie, coeff in side_dict.items():
+            if specie not in de_eqn.keys():
+                de_eqn[specie] = ''
+
+            if rate_const[:2] == 'z=':  # 0th order reaction
+                de_eqn[specie] += sign + coeff + '*' + rate_const[2:]
+            else:
+                rxn_rate = '*'.join([_s + '**' + _c for _s, _c in reactants_dict.items()])
+                de_eqn[specie] += sign + coeff + '*' + rate_const + '*' + rxn_rate
+
     # The following pyparsing structure outlines the expected reaction structure from reactions config file.
-    rxnType = pp.ZeroOrMore(pp.Literal('->')) 
-    molecule_with_coeff = pp.ZeroOrMore(pp.Word(pp.nums, '.'+pp.nums))
-    all_molecules = molecule_with_coeff + pp.Combine(pp.Word(pp.alphas)) + pp.ZeroOrMore(pp.Suppress('+') + molecule_with_coeff + pp.Combine(pp.Word(pp.alphas))) 
-    reactantsExpr = all_molecules + pp.Suppress(rxnType) # automatically suppresses remainder of text
-    productsExpr = pp.Suppress(reactantsExpr) + all_molecules 
+    rxn_arrow               = Literal('->')
+    coefficient             = ZeroOrMore(Word(nums, '.' + nums))  # Match integers & floats
+    element                 = Word(alphas, alphas)
+    subscript               = ZeroOrMore(Word(nums, '.' + nums))
+    molecule_w_coefficient  = Group(
+                                pp.Optional(coefficient) +
+                                Combine(OneOrMore(
+                                    Combine(element + pp.Optional(subscript))
+                                ))
+                            )
+    all_molecules           = ZeroOrMore(molecule_w_coefficient + Suppress('+') | molecule_w_coefficient)
+    reactants               = all_molecules + Suppress(rxn_arrow)
+    products                = Suppress(reactants) + all_molecules
 
-    # Initialize lhs and rhs system of equation arrays
-    DEsysLHS = np.array([]) # left of equal sign, the dA/dt, dB/dt, etc. (which will be written as dA, dB, etc) 
-    DEsysRHS = np.array([]) # right of equal sign, the rate expression based on chemical kinetic theory    
-    
-    # Iterate through rxn_book and get system of equations
-    for _, (rxn_id, rxn_info) in enumerate(rxn_book.items()): 
+    de_eqns: Dict[str, str] = {}
+    rxn_book = _organize_reactions_input(all_reactions, all_rate_constants)
+    for rxn_eqn, rate_constant in rxn_book:
+        # Parse, convert to dict, and make implicit coefficient explicit for the products and reactants of each reaction.
+        reactants_dict  = to_dict(reactants.parseString(rxn_eqn))
+        products_dict   = to_dict(products.parseString(rxn_eqn))
 
-        # Parse the current reaction split by '->', i.e., separate reactants and products.
-        reactantString = reactantsExpr.parseString(rxn_info[0]) # reactants
-        productString = productsExpr.parseString(rxn_info[0]) # products
+        # Update the lhs and rhs of differential equation reaction system for the reactants:
+        update_lhs_rhs(de_eqns, reactants_dict, reactants_dict, rate_constant, sign="-")
+        update_lhs_rhs(de_eqns, products_dict, reactants_dict, rate_constant, sign="+")
 
-        # If the first reactant has a stoich. coefficient of 1 (but implicit in reactions config file), make this explicit.
-        if reactantString[0].isalpha():
-            reactantString.insert(0, '1')
-        # If the first product has a stoich. coefficient of 1 (but implicit in reactions config file), make this explicit.
-        if productString[0].isalpha():
-            productString.insert(0, '1')
-        
-        # If any subsequent reactants have stoich. coefficient of 1 (but implicit in reactions config file), make this explicit.
-        reactant_bool = np.asarray([r.isalpha() for r in reactantString])
-        indices = np.where(reactant_bool == True)[0]
-        for ind in indices:
-            if reactantString[int(ind-1)].isalpha():
-                reactantString.insert(ind, '1')
-                # account for shift in original indice locations due to recent insert
-                indices += 1 
-        
-        # If any subsequent products have stoich. coefficient of 1 (but implicit in reactions config file), make this explicit.
-        product_bool = np.asarray([r.isalpha() for r in productString])
-        indices = np.where(product_bool == True)[0]
-        for ind in indices:
-            if productString[int(ind-1)].isalpha():
-                productString.insert(ind, '1')
-                # account for shift in original indice locations due to recent insert
-                indices += 1
-
-        # Create both the lhs and rhs of differential equation reaction system for the reactants:
-        counter = 0
-        while counter < len(reactantString[0::2]):
-            DEsysLHS = np.append(DEsysLHS, 'd' + reactantString[1::2][counter])
-            DEsysRHS = np.append(DEsysRHS, '-' + reactantString[0::2][counter] + f'*{rxn_info[1]}*' + '*'.join([i + '**' + j for i, j in zip(reactantString[1::2], reactantString[0::2]) ]))
-            counter += 1
-
-        # Create both the lhs and rhs of differential equation reaction system for the products:
-        counter = 0
-        while counter < len(productString[0::2]):
-            DEsysLHS = np.append(DEsysLHS, 'd' + productString[1::2][counter])
-            DEsysRHS = np.append(DEsysRHS, productString[0::2][counter] + f'*{rxn_info[1]}*' + '*'.join([i + '**' + j for i, j in zip(reactantString[1::2], reactantString[0::2]) ]))
-            counter += 1
-
-    # Combine duplicate entries (i.e. 2 statements for dA, should be added to get total differential equation).
-    # Duplicates occur because the parser digests reactions independently, thus duplicates arise because a species may be present in more than one reaction.
-    checked = []
-    tempLHS = np.array([])
-    tempRHS = np.array([])
-    for currMolec in DEsysLHS:
-        if currMolec not in checked:
-            dupIndices = [i for i, x in enumerate(DEsysLHS) if x == currMolec]
-            tempLHS = np.append(tempLHS, currMolec)
-            tempRHS = np.append(tempRHS, '+'.join(DEsysRHS[dupIndices]))
-            checked.append(currMolec)
-
-    # Until this point, the LHS was written as dA (i.e. for dA/dt). shorten this notation further such that dA --> A
-    DEsysLHS = [LHS[1:] for LHS in tempLHS]
-    DEsysRHS = tempRHS.tolist()
-
-    # Return to original specie names, now that reaction parsing is complete
-    for i, spec in enumerate(DEsysLHS):
-        # hold dummy and true specie names for a given specie
-        dummy_spec, true_spec = spec, specie_order[i]
-
-        # for each differential equation, replace dummy specie with true specie name
-        for j, eqn in enumerate(DEsysRHS):
-            DEsysRHS[j] = eqn.replace(dummy_spec, true_spec)
-
-        # re-assign true specie name from dummy name for LHS
-        DEsysLHS[i] = true_spec
-
-    # Check #6 - check if the species listed in main config file EXACTLY matches that found in reactions config file 
-    # note that use of sorted() does not modify lists in place.
-    if sorted(specie_order) != sorted(DEsysLHS):
-        raise ValueError(f"The unique species found in the main config file does not match the unique species found after parsing the reactions. Ensure these two files contain the same species.")
-    
-    # Enforce order of differential equations in same species appearance as given in main configuration file
-    # i.e. if a,b given in main config, then should return [da/dt, db/dt] etc.
-    reaction_eqns = DEsysRHS
-    if specie_order != DEsysLHS:
-        reaction_eqns = []
-        for _, specie in enumerate(specie_order):
-            where_specie = DEsysLHS.index(specie)
-            reaction_eqns.append(DEsysRHS[where_specie])
-  
-    return reaction_eqns
+    return de_eqns
 
 
 def create_reaction_code(rxn_species:           List[str],
-                         reaction_eqns:         List[str],
+                         reaction_eqns:         Dict[str, str],
                          rxn_file_path:         str,
+                         extra_terms:           str,
                          _ddt_reshape_shape:    Optional[Tuple[int, int, int]] = None
                          ) -> None:
     """
@@ -326,23 +405,26 @@ def create_reaction_code(rxn_species:           List[str],
     Parameters
     ----------
     * rxn_species:          Name of species in the order that they appear in the main config file.
-    * reaction_eqns:        Output of `parse_reactions` which gives system of differential reaction equations appearing in the same specie order as rxn_species.
+    * reaction_eqns:        Mapping between specie name and the net reaction for that specie.
     * rxn_file_path:        The path to the file in which to save the generated reactions.
+    * extra_terms:          The extra terms, if any, in string format ready to write to the reactions file.
     * _ddt_reshape_shape:   Shape needed by _ddt for PFR systems so that the inlet node does not have a reaction occurring at it.
     """
-    # If an empty list was passed for reaction_eqns, it means no reactions are involved in simulation (i.e. tracer experiment). 
+    # If an empty dict was passed for reaction_eqns, it means no reactions are involved in simulation (i.e. tracer experiment).
     # Therefore take species given and add dummy *0 so that the reaction terms are not contributing to mass balance as desired.
-    if not reaction_eqns:
-        reaction_eqns = [specie + '*0' for specie in rxn_species]
+    if reaction_eqns:
+        reaction_list = [reaction_eqns[specie] for specie in rxn_species]
+    else:
+        reaction_list = [specie + '*0' for specie in rxn_species]
 
     # Convert string ODE system to sympy expression type ODE system
-    rhs_symb = [sp.parse_expr(eqn) for eqn in reaction_eqns]
+    rhs_symb = [sp.parse_expr(eqn) for eqn in reaction_list]
 
     # Convert into function and then to string (i.e. source code)
     the_source = inspect.getsource(sp.lambdify([rxn_species], rhs_symb, 'numpy'))
 
     # Change function name to reactions
-    the_source = the_source.replace("_lambdifygenerated","reactions")
+    the_source = the_source.replace("_lambdifygenerated","_reactions")
 
     # Change Dummy variable name
     dummy_name = the_source[the_source.find('(')+1:the_source.find(')')]
@@ -352,7 +434,7 @@ def create_reaction_code(rxn_species:           List[str],
     close_bracket = the_source.find(')')
     source_left, source_right = the_source[:close_bracket], the_source[close_bracket:]
     if _ddt_reshape_shape:
-        source_right = source_right.replace('specie_concentrations', f'specie_concentrations.reshape({_ddt_reshape_shape})')
+        source_right = source_right.replace('specie_concentrations', f'specie_concentrations.reshape({_ddt_reshape_shape})[..., 1:]')
     the_source = source_left + ', _ddt' + source_right
 
     # Remove the unneeded return statement
@@ -362,27 +444,23 @@ def create_reaction_code(rxn_species:           List[str],
     # (n_species, n_pfr * points_per_pfr) -> (n_species, n_pfr, points_per_pfr)
     if _ddt_reshape_shape:  # Only for PFRs
         the_source +=  '    # Reshape concentrations and _ddt to apply reaction only to non-inlet nodes\n'
-        the_source += f'    _ddt = _ddt.reshape({_ddt_reshape_shape})\n'
+        the_source += f'    _ddt = _ddt.reshape({_ddt_reshape_shape})[..., 1:]\n'
         the_source += '    \n'
 
     # Unroll _ddt update for each specie
     rhs_strs = [str(eqn) for eqn in rhs_symb]
-    if _ddt_reshape_shape:
-        for specie in rxn_species:
-            for i, rhs in enumerate(rhs_strs):
-                rhs_strs[i] = rhs.replace(specie, specie + '[..., 1:]')
 
     for id_specie, rhs in enumerate(rhs_strs):
         the_source += f'    # Update for specie {rxn_species[id_specie]}\n'
-        if _ddt_reshape_shape:
-            the_source += f'    _ddt[{id_specie}, :, 1:] += {rhs} \n\n'  # RXN does not apply to inlet node.
-        else:
-            the_source += f'    _ddt[{id_specie}, :] += {rhs} \n\n'
+        the_source += f'    _ddt[{id_specie}, :] += {rhs} \n\n'
 
     # Write system of differential reaction equations to runtime-generated file
     with open(rxn_file_path, 'w') as file:
         file.write("from numba import njit\n")
         file.write("import numpy as np\n")
+        file.write("\n")
+        file.write(extra_terms)
+        file.write("\n")
         file.write("\n")
         file.write("\n")
         file.write('@njit\n')

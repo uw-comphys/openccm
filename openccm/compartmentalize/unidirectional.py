@@ -412,21 +412,21 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
     #       between A and B. This is a problem since this function must return results that can be used by both the
     #       PFR and CSTR modelling approach.
 
-    def connections_and_flows(model, compartment_network, compartments, mesh, dir_vec, flows_and_upwind, final, config_parser) \
+    def connections_and_flows(model, compartment_network, compartments, mesh, dir_vec, flows_and_upwind, check_level, config_parser) \
         -> Tuple[
             Dict[int, Dict[int, int]],
             Dict[int, float]]:
         """ Utility wrapping function for calculating the connections and flowrates through the connections """
         if model == 'cstr':
-            connection_pairing, volumetric_flows = connect_cstr_compartments(compartment_network, mesh, flows_and_upwind, final, config_parser)
+            connection_pairing, volumetric_flows = connect_cstr_compartments(compartment_network, mesh, flows_and_upwind, check_level, config_parser)
         elif model == 'pfr':
-            res = connect_pfr_compartments(compartment_network, compartments, mesh, dir_vec, flows_and_upwind, final, config_parser)
+            res = connect_pfr_compartments(compartment_network, compartments, mesh, dir_vec, flows_and_upwind, check_level, config_parser)
             connection_pairing, volumetric_flows = res[3], res[5]
         else:
             raise ValueError(f"Unsupported model type: {model}")
         return connection_pairing, volumetric_flows
 
-    connection_pairing, volumetric_flows = connections_and_flows(model, compartment_network, compartments, mesh, dir_vec, flows_and_upwind, False, config_parser)
+    connection_pairing, volumetric_flows = connections_and_flows(model, compartment_network, compartments, mesh, dir_vec, flows_and_upwind, 0, config_parser)
 
     with open(log_folder_path + "merge.txt", 'w') as logging:
         if DEBUG:
@@ -486,7 +486,7 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
         # could be too small.
         # Rerun using thresholds and ensure that by applying thresholds that no compartments become illformed.
         connection_pairing, volumetric_flows = connections_and_flows(model, compartment_network, compartments, mesh,
-                                                                     dir_vec, flows_and_upwind, True, config_parser)
+                                                                     dir_vec, flows_and_upwind, 1, config_parser)
         merge_illformed_compartments()
 
         # Check compartments

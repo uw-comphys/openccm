@@ -2,7 +2,7 @@
 R1: a -> b
 R2: b -> a
 
-[RATES]
+[RATE CONSTANTS]
 R1: 1
 R2: 1
 

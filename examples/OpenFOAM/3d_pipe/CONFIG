@@ -1,0 +1,34 @@
+[INPUT]
+openfoam_sol_folder_path = velocity_profile/
+openfoam_velocity_file_name = U
+min_magnitude_threshold = 6e-5
+
+no_flux_names       = ("wall",)
+ignored_names       = None
+domain_inlet_names  = ("inlet",)
+domain_outlet_names = ("outlet",)
+
+
+[COMPARTMENTALIZATION]
+bc_names_for_seeds  = ("inlet",)
+min_compartment_size = 0.1
+
+[COMPARTMENT MODELLING]
+model = PFR
+
+[SIMULATION]
+run                 = True
+t_span              = 0, 4_000
+first_timestep      = 0.1
+points_per_pfr      = 10
+specie_names        = a
+initial_conditions  = a -> 0
+boundary_conditions = a: inlet -> H(t)
+
+[POST-PROCESSING]
+calculate_rtd           = True
+inlet_bc_name           = inlet
+outlet_bc_name          = outlet
+plot_results            = True
+output_VTK              = False
+network_diagram         = False

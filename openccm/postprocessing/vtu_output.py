@@ -26,14 +26,14 @@ import shutil
 from collections import defaultdict
 from multiprocessing.pool import Pool
 from pathlib import Path
-from typing import Callable, Dict, List, Set, Tuple, Any
+from typing import Callable, Dict, List, Set, Tuple, Any, Optional
 
 import numpy as np
 
 from ..config_functions import ConfigParser
 from ..mesh import CMesh, create_dof_to_element_map
 
-OPENFOAM_SCALAR_HEADER = """/*--------------------------------*- C++ -*----------------------------------*\\
+OPENFOAM_HEADER = """/*--------------------------------*- C++ -*----------------------------------*\\
   =========                 |
   \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
    \\\\    /   O peration     | Website:  https://openfoam.org
@@ -43,7 +43,7 @@ OPENFOAM_SCALAR_HEADER = """/*--------------------------------*- C++ -*---------
 FoamFile
 {{
     format      ascii;
-    class       volScalarField;
+    class       {};
     location    "{}";
     object      {};
 }}
@@ -51,7 +51,7 @@ FoamFile
 
 dimensions      [0 0 0 0 0 0 0];
 
-internalField   nonuniform List<scalar> 
+internalField   nonuniform List<{}> 
 {}
 (
 """
@@ -114,6 +114,36 @@ def create_compartment_label_gfu(mesh: 'ngsolve.Mesh', compartments: Dict[int, S
 
     return gfu
 
+def output_compartment_average_direction_vector(cmesh: CMesh, config_parse: ConfigParser, compartments, dir_vec: np.ndarray, vector_name: str):
+    dir_vec_avg = -np.ones_like(dir_vec)
+    for compartment, element_IDs in compartments.items():
+        dir_vec_avg[list(element_IDs), :] = np.mean(dir_vec[list(element_IDs), :], axis=0)
+    magnitude = np.linalg.norm(dir_vec_avg, axis=1)[..., np.newaxis]
+    dir_vec_avg /= magnitude
+
+    output_vector_openfoam(cmesh, config_parse, dir_vec_avg, vector_name)
+
+def output_vector_openfoam(cmesh: CMesh, config_parser: ConfigParser, vector: np.ndarray, vector_name: str) -> None:
+    """
+    Label each mesh element with the corresponding value in the velocity vector
+
+    Args:
+        cmesh:          CMesh to print values for.
+        config_parser:  OpenCCM ConfigParser.
+        vector:         Numpy array of size NxM where N is number of mesh elements and M is components of the array.
+        vector_name:    Name to use as a filename and to show up in Paraview.
+    """
+    time_0 = config_parser.get_list(['SIMULATION', 't_span'], float)[0]
+    output_file_name = str(time_0) + '/' + vector_name
+
+    output_folder_path = config_parser.get_item(['SETUP', 'output_folder_path'], str)
+    vtu_folder_path = config_parser.get_item(['POST-PROCESSING', 'vtu_dir'], str)
+    output_folder = output_folder_path + vtu_folder_path + output_file_name
+
+    # Create the output directory if it doesn't exist
+    Path(output_folder_path + vtu_folder_path + str(time_0)).mkdir(parents=True, exist_ok=True)
+
+    write_buffer_to_file_openfoam(vector, output_folder, time_0, vector_name, cmesh)
 
 def label_elements_openfoam(cmesh: CMesh, config_parser: ConfigParser) -> None:
     """
@@ -249,25 +279,39 @@ def label_compartments_openfoam(output_file_name: str, compartments: Dict[int, S
 def export_to_vtu_openfoam(
         concentrations_all_time:    np.ndarray,
         ts:                         np.ndarray,
-        model_to_element_map:       List[List[Tuple[float, int]]],
+        model_to_element_map:       Optional[List[List[Tuple[float, int]]]],
         config_parser:              ConfigParser,
-        cmesh:                      CMesh
+        cmesh:                      CMesh,
+        dof_to_element_map:         Optional[List[List[Tuple[int, int, float]]]] = None,
 ) -> None:
+    """
+
+    Parameters
+    ----------
+    concentrations_all_time:    Array containing the
+    ts:
+    model_to_element_map
+    config_parser
+    cmesh
+    dof_to_element_map:
+    """
     print("Exporting simulation visualization")
 
     output_folder_path  = config_parser.get_item(['SETUP',              'output_folder_path'],  str)
     vtu_folder_path     = config_parser.get_item(['POST-PROCESSING',    'vtu_dir'],             str)
     points_per_model    = config_parser.get_item(['SIMULATION',         'points_per_pfr'],      int)
     species_names       = config_parser.get_list(['SIMULATION',         'specie_names'],        str)
+    t_span              = config_parser.get_list(['SIMULATION',         't_span'],              float)
 
     num_elements = len(cmesh.element_sizes)
 
-    dof_to_element_map = create_dof_to_element_map(model_to_element_map, points_per_model)
+    if not dof_to_element_map:
+        dof_to_element_map = create_dof_to_element_map(model_to_element_map, points_per_model)
 
     assert len(dof_to_element_map) == concentrations_all_time.shape[1]
 
     # t0 will contain several visualization files that are constant in time, will symlink to them for speed and small file size
-    t0_path = os.path.join(output_folder_path + vtu_folder_path + str(ts[0]))
+    t0_path = os.path.join(output_folder_path + vtu_folder_path + str(t_span[0]))
     contents_of_t0 = [(file_name, os.path.abspath(os.path.join(t0_path, file_name))) for file_name in os.listdir(t0_path)]
 
     # Initialize to -1 so that any non-compartmentalized elements can be filtered out (assuming only positive values are valid)
@@ -278,7 +322,7 @@ def export_to_vtu_openfoam(
         # First timestep will have been previously created to store compartmentalization info.
         Path(output_folder).mkdir(parents=True, exist_ok=(i_t == 0))
 
-        if i_t > 0:
+        if t != t_span[0]:
             for file_name, original_path in contents_of_t0:
                 os.symlink(original_path, os.path.join(output_folder, file_name))
 
@@ -293,10 +337,21 @@ def export_to_vtu_openfoam(
 
 
 def write_buffer_to_file_openfoam(buffer: np.ndarray, output_file_path: str, t: float, variable_name: str, cmesh: CMesh) -> None:
-    with open(output_file_path, 'w') as output_file:
-        output_file.write(OPENFOAM_SCALAR_HEADER.format(t, variable_name, len(buffer)))
+    if buffer.ndim not in [1, 2]:
+        raise ValueError(f'Unexpected dimensionality ({buffer.ndim}) for buffer')
+    def line_to_str(buffer_line: np.ndarray) -> str:
+        if buffer_line.ndim == 0:
+            return str(buffer_line)
+        else:
+            return '(' + ' '.join(str(val) for val in buffer_line)  + ')'
 
-        output_file.write('\n'.join(str(entry) for entry in buffer))
+    value_class = 'volScalarField'  if buffer.ndim == 1 else 'volVectorField'
+    value_type  = 'scalar'          if buffer.ndim == 1 else 'vector'
+
+    with open(output_file_path, 'w') as output_file:
+        output_file.write(OPENFOAM_HEADER.format(value_class, t, variable_name, value_type, len(buffer)))
+
+        output_file.write('\n'.join(line_to_str(line) for line in buffer))
 
         output_file.write(
             ")\n"
@@ -309,7 +364,7 @@ def write_buffer_to_file_openfoam(buffer: np.ndarray, output_file_path: str, t: 
         for bc_name, facets in cmesh.bc_to_facet_map.items():
             facet_concentration_values = []
             for facet in facets:
-                facet_concentration_values.append(f"{buffer[cmesh.facet_elements[facet][0]]}\n")
+                facet_concentration_values.append(line_to_str(buffer[cmesh.facet_elements[facet][0]]) + "\n")
 
             facet_concentrations = '\t\t\t'.join(facet_concentration_values)
 
@@ -317,7 +372,7 @@ def write_buffer_to_file_openfoam(buffer: np.ndarray, output_file_path: str, t: 
                               f"\t{bc_name}\n"
                               f"\t{{\n"
                               f"\t\ttype            calculated;\n"
-                              f"\t\tvalue           nonuniform List<scalar>\n"
+                              f"\t\tvalue           nonuniform List<{value_type}>\n"
                               f"\t\t{len(facets)}\n"
                               f"\t\t(\n"
                               f"\t\t\t{facet_concentrations}"

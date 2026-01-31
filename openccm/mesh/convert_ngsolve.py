@@ -21,7 +21,7 @@ r"""
 Functions required for converting an NGSolve mesh object into a CMesh object.
 """
 
-from typing import Dict, List, Tuple, Callable
+from typing import Dict, List, Tuple, Callable, Optional
 
 import numpy as np
 
@@ -29,14 +29,15 @@ from .cmesh import CMesh, GroupedBCs
 from ..config_functions import ConfigParser
 
 
-def convert_mesh_ngsolve(config_parser: ConfigParser, mesh: 'ngsolve.Mesh') -> CMesh:
+def convert_mesh_ngsolve(config_parser: ConfigParser, phase_frac: np.ndarray, mesh: 'ngsolve.Mesh') -> CMesh:
     """
     Main function for converting the NGSolve mesh object into a CMesh object.
 
     Parameters
     ----------
-    * config_parser:  The OpenCCM ConfigParser.
-    * mesh:           The NGSolve mesh to convert into a CMesh.
+    * config_parser:    The OpenCCM ConfigParser.
+    * phase_frac:       Fraction of each mesh element taken up by the phase we wish to compartmentalize.
+    * mesh:             The NGSolve mesh to convert into a CMesh.
 
     Returns
     -------
@@ -67,7 +68,8 @@ def convert_mesh_ngsolve(config_parser: ConfigParser, mesh: 'ngsolve.Mesh') -> C
     cmesh = CMesh(vertices,
                  facet_elements, facet_vertices, facet_connectivity,
                  element_facets, element_vertices, element_connectivity, element_sizes,
-                 grouped_bcs, facet_to_bc_map, bc_to_facet_map)
+                 grouped_bcs, facet_to_bc_map, bc_to_facet_map,
+                 phase_frac)
 
     print("Done converting Mesh")
     return cmesh

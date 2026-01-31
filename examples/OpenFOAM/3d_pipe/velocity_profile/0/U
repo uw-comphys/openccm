@@ -1,0 +1,58 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  10
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    format      ascii;
+    class       volVectorField;
+    object      U;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+dimensions      [0 1 -1 0 0 0 0];
+
+internalField   uniform (0 0 0.1);
+
+boundaryField
+{
+    wall
+    {
+        type            noSlip;
+    }
+    
+    inlet
+    {
+        type            codedFixedValue;
+        value           uniform (0 0 0);
+        
+        name parabolicVelocity;
+        code
+        #{
+              const vectorField& Cf = patch().Cf();
+              vectorField& field = *this;
+              
+              const scalar c = 0;
+              const scalar r = 1;
+              const scalar Umax = 0.1;
+              
+              forAll(Cf, faceI)
+              {
+                  const scalar x = Cf[faceI][0];
+                  const scalar y = Cf[faceI][1];
+                  
+                  field[faceI] = vector(0,0,Umax*(1-((pow((y-c)/r,2))+(pow((x-c)/r,2)))));
+              }
+        #};
+    }
+
+    outlet
+    {
+        type            zeroGradient;
+    }
+}
+
+// ************************************************************************* //

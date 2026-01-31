@@ -20,20 +20,21 @@
 import numpy as np
 
 from collections import defaultdict
-from typing import Tuple, Dict, List, Set
+from typing import Tuple, Dict, List, Set, Optional
 from itertools import combinations
 from .cmesh import CMesh, GroupedBCs
 from ..config_functions import ConfigParser
 from ..io import read_boundary_condition, read_mesh_data
 
 
-def convert_mesh_openfoam(config_parser: ConfigParser) -> CMesh:
+def convert_mesh_openfoam(config_parser: ConfigParser, phase_frac: np.ndarray) -> CMesh:
     """
     Read OpenFOAM mesh information from file and convert it into OpenCCM's internal CMesh format.
 
     Parameters
     ----------
-    * config_parser:  OpenCCM ConfigParser from which to get the required OpenFOAM data.
+    * config_parser:    OpenCCM ConfigParser from which to get the required OpenFOAM data.
+    * phase_frac:       Fraction of each mesh element taken up by the phase we wish to compartmentalize.
 
     Returns
     -------
@@ -70,7 +71,8 @@ def convert_mesh_openfoam(config_parser: ConfigParser) -> CMesh:
     cmesh = CMesh(vertices,
                  facet_elements, facet_vertices, facet_connectivity,
                  element_facets, element_vertices, element_connectivity, element_sizes,
-                 grouped_bcs, facet_to_bc_map, bc_to_facet_map)
+                 grouped_bcs, facet_to_bc_map, bc_to_facet_map,
+                 phase_frac)
 
     print("Done converting Mesh")
     return cmesh

@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU Lesser General Public License along with OpenCCM. If not, see             #
 # <https://www.gnu.org/licenses/>.                                                                                     #
 ########################################################################################################################
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 r"""
 The mesh module contains the intermediate mesh representation, CMesh, and the functions required to convert OpenFOAM
@@ -33,13 +33,14 @@ from .convert_openfoam import convert_mesh_openfoam
 from ..config_functions import ConfigParser
 
 
-def convert_mesh(config_parser: ConfigParser, ngsolve_mesh: Optional['ngsolve.Mesh']) -> CMesh:
+def convert_mesh(config_parser: ConfigParser, phase_frac: np.ndarray, ngsolve_mesh: Optional['ngsolve.Mesh']) -> CMesh:
     """
-
+    Helper function for cleaing up call site
 
     Parameters
     ----------
     * config_parser:    The OpenCCM ConfigParser from which to get the required info for conversion.
+    * phase_frac:       Fraction of each mesh element taken up by the phase we wish to compartmentalize.
     * ngsolve_mesh:     The NGSolve mesh object to convert if using OpenCMP.
 
     Returns
@@ -47,10 +48,10 @@ def convert_mesh(config_parser: ConfigParser, ngsolve_mesh: Optional['ngsolve.Me
     * cmesh: Internal representation of the mesh inside ngsolve_mesh or pointed to by config_parser
     """
     if ngsolve_mesh is None:
-        return convert_mesh_openfoam(config_parser)
+        return convert_mesh_openfoam(config_parser, phase_frac)
     else:
         from .convert_ngsolve import convert_mesh_ngsolve  # Import here to NGSolve & OpenCMP dependencies optional
-        return convert_mesh_ngsolve(config_parser, ngsolve_mesh)
+        return convert_mesh_ngsolve(config_parser, phase_frac, ngsolve_mesh)
 
 
 def convert_velocities_to_flows(cmesh: CMesh, vel_vec: np.ndarray) -> np.ndarray:
@@ -102,14 +103,14 @@ def create_dof_to_element_map(model_to_element_map: List[List[Tuple[float, int]]
     to the element.
 
     Args:
-        model_to_element_map:   Mapping between model ID and a list of ordered tuples (distance_in_model, element ID)/
-        points_per_model:       Number of discretization points per model. 1 for CSTRs, >1 for PFRs.
+    * model_to_element_map:   Mapping between model ID and a list of ordered tuples (distance_in_model, element ID)
+    * points_per_model:       Number of discretization points per model. 1 for CSTRs, >1 for PFRs.
 
     Returns:
-        dof_to_element_map:     Mapping between degree of freedom and the ordered lists of tuples representing the elements
-                                that this dof maps to. Tuple contains (element ID, dof_other, weight_this).
-                                dof_other and weight_this are used for a linear interpolation of value between the value of
-                                this dof and the nearest (dof_other).
+    * dof_to_element_map:     Mapping between degree of freedom and the ordered lists of tuples representing the elements
+                              that this dof maps to. Tuple contains (element ID, dof_other, weight_this).
+                              dof_other and weight_this are used for a linear interpolation of value between the value of
+                              this dof and the nearest (dof_other).
     """
     dof_dist = np.linspace(0.0, 1.0, num=points_per_model)
     # delta is not used for CSTR. Using a very small number for delta in order to push the weighing term to clip at 1.0

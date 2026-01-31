@@ -110,6 +110,16 @@ def solve_system(
         for id_connection in connections[id_pfr][0].keys():
             Q_pfrs[id_pfr] += Q_connections[id_connection]
 
+    # Pre-divide Q_connections by Q_pfr for the PFR they're going into
+    Q_weight = Q_connections.copy()
+    for id_pfr, (inlet_info, _) in connections.items():
+        for id_connection in inlet_info:
+            Q_weight[id_connection] /= Q_pfrs[id_pfr]
+    # Validate that Q_weights sum to 1 for each PFR
+    for id_pfr in connections:
+        total = sum(Q_weight[id_connection] for id_connection in connections[id_pfr][0])
+        assert np.isclose(total, 1)
+
     # Info for connections between PFRs
         # 1. PFR inlet node     (To know what value to assign it to)
         # 2. Connection ID      (For Q_weight)
@@ -127,7 +137,7 @@ def solve_system(
                      points_per_pfr * (id_pfr_other_side + 1) - 1]  # Index of outlet node for other PFR
                 )
             elif id_pfr_other_side < 0:  # Domain inlet BC
-                Q_weight_inlets[id_pfr_other_side].append(Q_connections[id_connection] / Q_pfrs[id_pfr])
+                Q_weight_inlets[id_pfr_other_side].append(Q_weight[id_connection])
                 points_for_bc[id_pfr_other_side].append(points_per_pfr * id_pfr)
 
     # Convert to numpy array for numba reasons
@@ -147,18 +157,6 @@ def solve_system(
         p_e = points_per_pfr * (id_pfr + 1)  # No -1 since we want the range inclusive of both ends
         _ddt0[:, p_s:p_e] = -Q_pfrs[id_pfr] / delta_vs[id_pfr]
 
-    # Pre-divide Q_connections by Q_pfr for the PFR they're going into
-    Q_weight = Q_connections.copy()
-    for id_pfr in connections:
-        inlet_info = connections[id_pfr][0]
-        for id_connection in inlet_info:
-            Q_weight[id_connection] /= Q_pfrs[id_pfr]
-
-    # Validate that Q_weights sum to 1 for each PFR
-    for id_pfr in connections:
-        total = sum(Q_weight[id_connection] for id_connection in connections[id_pfr][0])
-        assert np.isclose(total, 1)
-
     all_inlet_ids = points_per_pfr * np.arange(0, num_pfrs, dtype=int)
 
     inlet_map:  Dict[int, List[Tuple[int, int]]] = defaultdict(list)
@@ -176,18 +174,18 @@ def solve_system(
                 outlet_map[id_pfr_other_side].append((pfr, id_connection))
 
     from . import load_and_prepare_bc_ic_and_rxn
-    reactions, bcs, c0 = load_and_prepare_bc_ic_and_rxn(config_parser,
-                                                        c_shape,
-                                                        points_per_model=points_per_pfr,
-                                                        _ddt_reshape_shape=(num_species, num_pfrs, points_per_pfr),
-                                                        cmesh=cmesh,
-                                                        Q_weight_inlets=Q_weight_inlets,
-                                                        model_volumes=volumes,
-                                                        points_for_bc=points_for_bc,
-                                                        t0=t_span[0],
-                                                        model_to_element_map=pfr_to_element_map,
-                                                        connected_to_another_inlet=connected_to_another_inlet,
-                                                        Q_weight=Q_weight)
+    reactions, bcs, c0, _ = load_and_prepare_bc_ic_and_rxn(config_parser,
+                                                           c_shape,
+                                                           points_per_model=points_per_pfr,
+                                                           _ddt_reshape_shape=(num_species, num_pfrs, points_per_pfr),
+                                                           cmesh=cmesh,
+                                                           Q_weight_inlets=Q_weight_inlets,
+                                                           model_volumes=volumes,
+                                                           points_for_bc=points_for_bc,
+                                                           t0=t_span[0],
+                                                           model_to_element_map=pfr_to_element_map,
+                                                           connected_to_another_inlet=connected_to_another_inlet,
+                                                           Q_weight=Q_weight)
 
     args = (Q_weight, _ddt0, connected_to_another_inlet, all_inlet_ids, c_shape, reactions, bcs)
     output = solve_ivp(ddt, t_span, c0, method=solver, atol=atol, rtol=rtol, args=args, first_step=first_timestep, t_eval=t_eval)

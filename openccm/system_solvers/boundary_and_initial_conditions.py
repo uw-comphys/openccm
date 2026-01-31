@@ -38,9 +38,9 @@ from .helper_functions import H
 BC_TEMPLATE = "@njit(inline='always', cache=True)\n" + \
               "def {}(t):\n" + \
               "    return {}\n"
-"""Template for generating the boudnary condition file."""
+"""Template for generating the boundary condition file."""
 SYMPY_EQN_ARGS = [x, y, z, t]
-"""TODO"""
+"""Variables usable by sympy for spatially- or time-varying equations."""
 
 
 def create_boundary_conditions(c0:                  np.ndarray,
@@ -51,7 +51,8 @@ def create_boundary_conditions(c0:                  np.ndarray,
                                points_per_model:    int,
                                cmesh:               CMesh,
                                dof_to_element_map:  List[List[Tuple[int, int, float]]],
-                               model_volumes:       np.ndarray) -> None:
+                               model_volumes:       np.ndarray
+                               ) -> Tuple[str, Dict[int, Dict[int, sp.Expr]]]:
     """
     CSTRs need the boundary condition in their original form since the equation for the inlets is sum (Q_in * C_in).
     PFRs however need the boundary condition in derivative form since the inlets to the PFRs produce a system of
@@ -70,18 +71,26 @@ def create_boundary_conditions(c0:                  np.ndarray,
 
     Parameters
     ----------
-    * c0:               The initial condition, needed in order to properly implement boundary conditions for PFR models.
-                        The BC will override the IC value for the BC nodes.
-    * config_parser:    OpenCCM ConfigParser for getting settings.
-    * Q_weights:        Mapping between BC ID and a list of weights
-                        The entries for each boundary condition MUST be in the same order as points_for_bc.
-    * points_for_bc:    Mapping between boundary ID and the index into the state array.
-                        Entries for each BC MUST be in the same order as Q_weights.
-    * t0:               The starting time, needed for updating c0 if using a PFR model.
-    * points_per_model: Number of discretization points per model. A value of 1 is assumed to represent a CSTR.
-    * cmesh:
-    * dof_to_element_map:
-    * model_volumes:        TODO
+    * c0:                   The initial condition, needed in order to properly implement boundary conditions for PFR models.
+                            The BC will override the IC value for the BC nodes.
+    * config_parser:        OpenCCM ConfigParser for getting settings.
+    * Q_weights:            Mapping between BC ID and a list of weights
+                            The entries for each boundary condition MUST be in the same order as points_for_bc.
+    * points_for_bc:        Mapping between boundary ID and the index into the state array.
+                            Entries for each BC MUST be in the same order as Q_weights.
+    * t0:                   The starting time, needed for updating c0 if using a PFR model.
+    * points_per_model:     Number of discretization points per model. A value of 1 is assumed to represent a CSTR.
+    * cmesh:                The CMesh from which the model being simulated was derived.
+    * dof_to_element_map:   Mapping between degree of freedom and the ordered lists of tuples representing the elements
+                            that this dof maps to. Tuple contains (element ID, dof_other, weight_this).
+                            dof_other and weight_this are used for a linear interpolation of value between the value of
+                            this dof and the nearest (dof_other).
+    * model_volumes:        The volume of each PFR/CSTR, indexed by their ID.
+
+    Returns
+    -------
+    * bc_file_name:         The file name, without the .py, in which the boundary conditions are saved.
+    * bc_dict_for_eval:     Mapping BC id and a second mapping which maps from specie name to
     """
     def get_bc_id(_bc_name: str) -> int:
         if 'point' in _bc_name:
@@ -111,10 +120,10 @@ def create_boundary_conditions(c0:                  np.ndarray,
         "\n",
     ]
 
-    spatial_coords  = {x, y, z}
-    bc_dict         = defaultdict(dict)  # For writing to file
-    bc_dict_for_c0  = defaultdict(dict)  # For calculating new c0 values if using a PFR
-    bcs_names_used  = set()
+    spatial_coords      = {x, y, z}
+    bc_dict             = defaultdict(dict)  # For writing to file
+    bc_dict_for_eval    = defaultdict(dict)  # For calculating new c0 values if using a PFR
+    bcs_names_used      = set()
 
     bc_str = config_parser.get_item(['SIMULATION', 'boundary_conditions'], str)
 
@@ -141,6 +150,7 @@ def create_boundary_conditions(c0:                  np.ndarray,
 
     for bc_line in bc_str.splitlines():
         specie, bc_info = [item.strip() for item in bc_line.split(':')]
+        specie_id = specie_names.index(specie)
         if specie not in specie_names:
             raise ValueError(f'Unknown specie: {specie} when specifying boundary condition: {bc_line}.')
 
@@ -183,16 +193,18 @@ def create_boundary_conditions(c0:                  np.ndarray,
         else:
             bc_diff = bc_eqn.diff(t)
             bc_dict[bc_id][specie] = parse_piecewise_heaviside_into_string(str(bc_diff))
-            bc_dict_for_c0[bc_id][specie] = bc_eqn
+            bc_dict_for_eval[bc_id][specie_id] = bc_eqn
 
             # Zero out c0 for species that have any values specified for a given BC.
-            c0[specie_names.index(specie), points_for_bc[bc_id]] = 0
+            c0[specie_id, points_for_bc[bc_id]] = 0
 
     # Override c0 for PFR
-    if need_time_deriv_version:
-        for bc_id, species_dict in bc_dict_for_c0.items():
-            for specie, bc_eqn in species_dict.items():
-                np.add.at(c0[specie_names.index(specie)], points_for_bc[bc_id], np.array(Q_weights[bc_id]) * float(bc_eqn.evalf(subs={'t': t0})))
+    for bc_id, species_dict in bc_dict_for_eval.items():
+        for specie_id, bc_eqn in species_dict.items():
+            # np.add.at is used since it handles repeat indices which regular indexing does not
+            np.add.at(c0[specie_id],
+                      points_for_bc[bc_id],
+                      np.array(Q_weights[bc_id]) * float(bc_eqn.evalf(subs={'t': t0})))
 
     bcs_names_used = sorted(bcs_names_used)  # Convert to list to keep order consistent
 
@@ -217,7 +229,7 @@ def create_boundary_conditions(c0:                  np.ndarray,
 
     # Hand unroll the loop to apply the BCs
     bc_file_lines.append("@njit(inline='always')  # Do not cache, _ddt will be a large matrix\n")
-    bc_file_lines.append("def boundary_conditions(t: float, _ddt: ndarray) -> None:\n")
+    bc_file_lines.append("def _boundary_conditions(t: float, _ddt: ndarray) -> None:\n")
     if len(bcs_names_used) == 0:
         bc_file_lines.append('    pass  # No boundary conditions used')
     else:
@@ -227,9 +239,12 @@ def create_boundary_conditions(c0:                  np.ndarray,
             bc_file_lines.append("\n")
 
     # Write to file
-    bc_file_path = config_parser.get_item(['SETUP', 'working_directory'],      str) + '/bc_code_gen.py'
+    bc_file_name = f'bc_code_gen_{hash(config_parser)}'
+    bc_file_path = config_parser.get_item(['SETUP', 'tmp_folder_path'], str) + '/' + bc_file_name + '.py'
     with open(bc_file_path, "w") as file:
         file.write("".join(bc_file_lines))
+
+    return bc_file_name, bc_dict_for_eval
 
 
 def dof_is_pfr_inlet(dof: int, points_per_model: int) -> bool:

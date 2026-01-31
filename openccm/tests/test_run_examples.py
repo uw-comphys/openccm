@@ -106,3 +106,11 @@ def test_opencmp_recirc():
 
 def test_openfoam_2d_pipe():
     clean_and_run(rel_path_to_examples + 'OpenFOAM/pipe_with_recirc/')
+
+
+def test_openfoam_3d_recirc():
+    clean_and_run(rel_path_to_examples + 'OpenFOAM/pipe_with_recirc_3d/')
+
+
+def test_openfoam_3d_pipe():
+    clean_and_run(rel_path_to_examples + 'OpenFOAM/3d_pipe/')

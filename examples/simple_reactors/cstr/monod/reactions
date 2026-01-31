@@ -1,0 +1,6 @@
+[REACTIONS]
+R1: s + X -> 1.5X
+
+[RATE CONSTANTS]
+R1: 1/(0.25 + s)
+

@@ -2,6 +2,6 @@
 R1: 2NaCl   + CaCO3 ->  Na2CO3 + CaCl2
 R2:  Na2CO3 + CaCl2 -> 2NaCl   + CaCO3
 
-[RATES]
+[RATE CONSTANTS]
 R1: 5e-2
 R2: 2

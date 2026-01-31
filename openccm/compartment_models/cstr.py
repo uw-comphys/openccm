@@ -32,8 +32,8 @@ from ..mesh import CMesh
 
 def connect_cstr_compartments(compartment_network:      Dict[int, Dict[int, Dict[int, int]]],
                               mesh:                     CMesh,
-                              flows_and_upwind: np.ndarray,
-                              final:                    bool,
+                              flows_and_upwind:         np.ndarray,
+                              check_level:              int,
                               config_parser:            ConfigParser) \
         -> Tuple[Dict[int, Dict[int, int]],
                  Dict[int, float]]:
@@ -59,9 +59,11 @@ def connect_cstr_compartments(compartment_network:      Dict[int, Dict[int, Dict
                             - 2nd column is a flag indicating which of a facet's elements are upwind of it.
                                 - 0, and 1 represent the index into mesh.facet_elements[facet]
                                 - -1 is used for boundary elements to represent
-    * final:                If asserts and all calculations should be performed.
-                            This is set to False when function is called from merge_compartments since some may
-                            be too small for the invariants to be true.
+    * check_level:          == 0 : No checks or asserts
+                            == 1 : Check flow but no asserts
+                            == 2 : Check flow and use asserts
+                            Values of 0 and 1 are used by `merge_compartments` since some may be too small for
+                            the invariants to be true until merging is done.
     * config_parser:        The OpenCCM ConfigParser.
 
     Returns
@@ -112,7 +114,7 @@ def connect_cstr_compartments(compartment_network:      Dict[int, Dict[int, Dict
                         net_flow += (-1 if inflow else 1) * flow_through_facet
 
                     # If the flow is below the threshold, don't add the connection.
-                    if final and abs(net_flow) < flow_threshold:
+                    if check_level >= 1 and abs(net_flow) < flow_threshold:
                         rejected_connection_pairings.add(pair(id_compartment, id_neighbour))
                         continue
 
@@ -124,7 +126,7 @@ def connect_cstr_compartments(compartment_network:      Dict[int, Dict[int, Dict
                     volumetric_flows[id_of_next_connection] = abs(net_flow)
                     id_of_next_connection += 1
 
-        if final:
+        if check_level == 2:
             # Must have at least two connections, otherwise mass would accumulate inside the compartment
             assert len(compartment_connections) > 1
 
@@ -195,7 +197,7 @@ def create_cstr_network(compartments:           Dict[int, Set[int]],
     ####################################################################################################################
     # 1. Create connections between compartments
     ####################################################################################################################
-    connection_pairing, _volumetric_flows = connect_cstr_compartments(compartment_network, mesh, flows_and_upwind, True, config_parser)
+    connection_pairing, _volumetric_flows = connect_cstr_compartments(compartment_network, mesh, flows_and_upwind, 2, config_parser)
     check_network_for_disconnected_subgraphs(connection_pairing)
 
     ####################################################################################################################

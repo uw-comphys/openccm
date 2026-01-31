@@ -1,5 +1,5 @@
 [REACTIONS]
 R1: a -> 2b
 
-[RATES]
+[RATE CONSTANTS]
 R1: 0.1

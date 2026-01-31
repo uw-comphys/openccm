@@ -131,7 +131,8 @@ class CMesh:
                  element_sizes:         np.ndarray,
                  grouped_bcs:           GroupedBCs,
                  facet_to_bc_map:       np.ndarray,
-                 bc_to_facet_map:       Dict[str, Tuple[int, ...]]):
+                 bc_to_facet_map:       Dict[str, Tuple[int, ...]],
+                 phase_frac:            np.ndarray):
         """
         Parameters
         ----------
@@ -147,6 +148,7 @@ class CMesh:
                                   - **NOTE:**   This value WILL be modified by the compartmentalization scheme. Elements will be
                                                 Removed from here if they're deemed ineligible for compartmentalization, e.g.
                                                 because they have a magnitude of 0.
+        * phase_frac:             Phase fraction of the phase being compartmentalized, indexed by element ID. None if single phase.
         """
 
         # All of these must be calculated in different ways based on the simulation package they come from.
@@ -178,6 +180,7 @@ class CMesh:
 
         self.element_sizes          = element_sizes
         """The size of each element, indexed by its ID. Represents area for 2D meshes and volume for 3D meshes."""
+        self.element_sizes          *= phase_frac
         self.element_sizes.flags.writeable = False
 
         self.grouped_bcs            = grouped_bcs

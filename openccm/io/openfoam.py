@@ -31,7 +31,7 @@ from openccm.config_functions import ConfigParser
 T = TypeVar('T', int, float)
 
 
-def load_velocity_and_direction_openfoam(config_parser: ConfigParser) -> Tuple[np.ndarray, np.ndarray]:
+def load_velocity_and_direction_openfoam(config_parser: ConfigParser) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Load the velocity vector from file and calculate the direction vector.
     Both are indexed by element id.
@@ -47,8 +47,21 @@ def load_velocity_and_direction_openfoam(config_parser: ConfigParser) -> Tuple[n
     """
     print("Start LOAD")
     min_magnitude_threshold = config_parser.get_item(['INPUT', 'min_magnitude_threshold'], float)
+    min_alpha_threshold = config_parser.get_item(['INPUT', 'min_alpha_threshold'], float)
 
     vel_vec = read_mesh_data(config_parser.get_item(['INPUT', 'velocity_file_path'], str), float)
+    if 'alpha_file_path' in config_parser['INPUT']:
+        phase_frac = read_mesh_data(config_parser.get_item(['INPUT', 'alpha_file_path'], str), float)
+        phase_frac[phase_frac < min_alpha_threshold] = 0
+
+        if len(vel_vec) != len(phase_frac):
+            raise ValueError(f"Velocity vector (n={len(vel_vec)}) and phase fraction (n={len(phase_frac)}) do not have the same number of values.")
+        if len(phase_frac.shape) != 1:
+            raise ValueError(f"The specified phase fraction not a scalar, shape is {phase_frac.shape}")
+
+        vel_vec *= phase_frac.reshape(-1, 1)
+    else:
+        phase_frac = np.array([1])  # Use 1 to keep rest of the code the same.
 
     magnitude = np.linalg.norm(vel_vec, axis=1)
     # Any vectors that had a magnitude of 0 don't need to be zero'd out since they're already zero
@@ -60,7 +73,7 @@ def load_velocity_and_direction_openfoam(config_parser: ConfigParser) -> Tuple[n
     dir_vec = vel_vec / magnitude.reshape((len(vel_vec), 1))
 
     print("End LOAD")
-    return dir_vec, vel_vec
+    return dir_vec, vel_vec, phase_frac
 
 
 def read_boundary_condition(bc_file_path: str) -> Dict[str, Tuple[int, int]]:

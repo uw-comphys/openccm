@@ -121,7 +121,7 @@ with $k_f = 5e-2$ and $k_r = 2$ (chosen to be dimensionless for example). A conf
     R1: 2NaCl   + CaCO3 ->  Na2CO3 + CaCl2
     R2:  Na2CO3 + CaCl2 -> 2NaCl   + CaCO3
     
-    [RATES]
+    [RATE CONSTANTS]
     R1: 5e-2
     R2: 2
 

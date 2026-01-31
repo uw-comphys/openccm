@@ -55,15 +55,18 @@ def solve_system(
 
     Parameters
     ----------
-    * cstr_network:     A tuple containing, in order (from `create_cstr_network`):
-                        1. connections: A dictionary representing the CSTR network.
-                                        The keys are the IDs of each CSTR, the values are tuples of two dictionaries.
-                                        For both dictionaries, the key is the connection ID
-                                        and the value is the ID of the CSTR on the other end of the connection.
-                                        1. The first dictionary is for flows into the CSTR.
-                                        2. The second dictionary is for flows out of the CSTR.
-                        2. volumes:             A numpy array of the volume of each CSTR indexed by its ID.
-                        3. volumetric_flows:    A numpy array of the volumetric flowrate through each connection indexed by its ID.
+    * cstr_network:
+        1. connections: Mapping between CSTR and two mappings for connections.
+        -   The first dictionary is for flows into the CSTR.
+        -   The second dictionary is for flows out of the CSTR.
+        -   For both dictionaries, the key is the connection ID
+            and the value is the ID of the CSTR on the other end of the connection.
+        2. volumes:                 A numpy array of the volume of each CSTR indexed by its ID.
+        3. volumetric_flows:        A numpy array of the volumetric flowrate through each connection indexed by its ID.
+        4. compartment_to_cstr_map: A new_id_for between a compartment ID and the ID of the CSTR representing it.
+                                    Here in order to preserve consistency with create_pfr_network.
+        5. cstr_to_element_map:     A mapping between model ID and an ordered list of tuples containing:
+                                        (element_id, 0). The zero is there to maintain the same type as the PFR version.
     * config_parser:    OpenCCM ConfigParser for getting settings.
     * cmesh:            The CMesh from which the CSTR network was created.
 
@@ -132,16 +135,16 @@ def solve_system(
         Q_div_v[:, id_cstr]        /= volumes[id_cstr]
 
     from . import load_and_prepare_bc_ic_and_rxn
-    reactions, bcs, c0 = load_and_prepare_bc_ic_and_rxn(config_parser,
-                                                        c_shape,
-                                                        points_per_model=1,
-                                                        _ddt_reshape_shape=None,
-                                                        cmesh=cmesh,
-                                                        Q_weight_inlets=Q_weight_inlets,
-                                                        model_volumes=volumes,
-                                                        points_for_bc=points_for_bc,
-                                                        t0=t_span[0],
-                                                        model_to_element_map=cstr_to_element_map)
+    reactions, bcs, c0, _ = load_and_prepare_bc_ic_and_rxn(config_parser,
+                                                           c_shape,
+                                                           points_per_model=1,
+                                                           _ddt_reshape_shape=None,
+                                                           cmesh=cmesh,
+                                                           Q_weight_inlets=Q_weight_inlets,
+                                                           model_volumes=volumes,
+                                                           points_for_bc=points_for_bc,
+                                                           t0=t_span[0],
+                                                           model_to_element_map=cstr_to_element_map)
 
     args = (Q_div_v, c_shape, reactions, bcs)
 
