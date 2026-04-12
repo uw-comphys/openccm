@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU Lesser General Public License along with OpenCCM. If not, see             #
 # <https://www.gnu.org/licenses/>.                                                                                     #
 ########################################################################################################################
-from typing import List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional
 
 r"""
 The mesh module contains the intermediate mesh representation, CMesh, and the functions required to convert OpenFOAM
@@ -73,11 +73,16 @@ def convert_velocities_to_flows(cmesh: CMesh, vel_vec: np.ndarray) -> np.ndarray
     """
     flow = cmesh.facet_size.copy()
     upwind_element = np.zeros(len(flow), dtype=int)
+    boundary_fluxes: Dict[int, List[Tuple[int, float]]] = {}
     for facet, facet_elements in enumerate(cmesh.facet_elements):
         if len(facet_elements) == 1:
             flux = cmesh.facet_normals[facet].dot(vel_vec[facet_elements[0]])
             flow[facet] = abs(flux) * cmesh.facet_size[facet]
             upwind_element[facet] = 0 if flux >= 0 else -1
+
+            bc_id = cmesh.facet_to_bc_map[facet]
+            if bc_id < 0:
+                boundary_fluxes.setdefault(int(bc_id), []).append((facet, float(flux)))
         elif len(facet_elements) == 2:
             flux_0 = cmesh.get_outward_facing_normal(facet, facet_elements[0]).dot(vel_vec[facet_elements[0]])
             flux_1 = cmesh.get_outward_facing_normal(facet, facet_elements[1]).dot(vel_vec[facet_elements[1]])
@@ -94,7 +99,44 @@ def convert_velocities_to_flows(cmesh: CMesh, vel_vec: np.ndarray) -> np.ndarray
         else:
             raise ValueError(f'Facet {facet} has {len(facet_elements)} elements, but should only have 1 or 2.')
 
+    _validate_boundary_facet_directions(cmesh, boundary_fluxes)
+
     return np.array([flow, upwind_element], dtype=object).transpose()
+
+
+def _validate_boundary_facet_directions(cmesh: CMesh, boundary_fluxes: Dict[int, List[Tuple[int, float]]]) -> None:
+    bc_id_to_name = {
+        cmesh.grouped_bcs.id(name): name
+        for name in (cmesh.grouped_bcs.domain_inlet_names + cmesh.grouped_bcs.domain_outlet_names)
+    }
+
+    violations = []
+    for bc_id in cmesh.grouped_bcs.domain_inlets:
+        reversed_facets = [(facet, flux) for facet, flux in boundary_fluxes.get(bc_id, []) if flux > 0.0]
+        if reversed_facets:
+            sample_facets = [facet for facet, _ in reversed_facets[:10]]
+            fluxes = [flux for _, flux in reversed_facets]
+            violations.append(
+                f"Inlet BC '{bc_id_to_name.get(bc_id, str(bc_id))}' ({bc_id}) has {len(reversed_facets)} facets with outflow; "
+                f"sample facets {sample_facets}; signed flux range [{min(fluxes):.6e}, {max(fluxes):.6e}]"
+            )
+
+    for bc_id in cmesh.grouped_bcs.domain_outlets:
+        reversed_facets = [(facet, flux) for facet, flux in boundary_fluxes.get(bc_id, []) if flux < 0.0]
+        if reversed_facets:
+            sample_facets = [facet for facet, _ in reversed_facets[:10]]
+            fluxes = [flux for _, flux in reversed_facets]
+            violations.append(
+                f"Outlet BC '{bc_id_to_name.get(bc_id, str(bc_id))}' ({bc_id}) has {len(reversed_facets)} facets with inflow; "
+                f"sample facets {sample_facets}; signed flux range [{min(fluxes):.6e}, {max(fluxes):.6e}]"
+            )
+
+    if violations:
+        raise ValueError(
+            "Detected reversed flow on configured domain boundaries. "
+            "Each inlet facet must have inflow or zero, and each outlet facet must have outflow or zero.\n"
+            + "\n".join(violations)
+        )
 
 
 def create_dof_to_element_map(model_to_element_map: List[List[Tuple[float, int]]], points_per_model: int) -> List[List[Tuple[int, int, float]]]:
