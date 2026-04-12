@@ -799,25 +799,41 @@ def _remove_unwanted_elements(mesh: CMesh, dir_vec: np.ndarray) -> Tuple[Set[int
     * valid_elements:     A set containing the IDs of the elements that are still valid for compartmentalization.
     """
     no_slip_facets = np.where(mesh.facet_to_bc_map == mesh.grouped_bcs.no_flux)[0]
+    # 1 for sharing a vertex in 2D, 2 for sharing an edge in 3D.
+    min_shared_vertices = 1 if mesh.vertices.shape[1] == 2 else 2
 
     # Remove the elements which have a magnitude of 0
     magnitude = np.linalg.norm(dir_vec, axis=1)
     removed_elements = set(np.where(magnitude == 0)[0])
 
-    # Remove elements which are on a no-slip boundary condition
+    # Remove elements which are on a no-slip boundary condition.
+    # Also remove neighbouring elements in the immediate wall layer, but preserve any element that is attached to a
+    # different named boundary such as an inlet or outlet.
+    # This is in particular important for triangular 2D and tetrahedra 3D meshes where a mesh element may have a single
+    # vertex on the no-slip boundary and itself would be impact in the same way as other triangles/tets with 2+ vertices
+    # on the no-slip.
     for facet in no_slip_facets:
         # A facet on a mesh boundary should only have one element
         elements = mesh.facet_elements[facet]
         assert len(elements) == 1
 
-        # 1. Add the element which has this facet
+        # 1. Remove the element which has this facet
         removed_elements.add(elements[0])
 
-        # 2. Add all elements that has any of the vertices from that facet
+        # 2. Remove neighbouring elements that lie in the same wall-adjacent layer.
+        #    In 2D this means sharing a vertex with the no-flux facet; in 3D it means sharing an edge.
+        #    Do not remove a candidate if it is attached to any other (non-no-flux) named boundary.
         bc_vertices = set(mesh.facet_vertices[facet])
         for element_neighbour in mesh.element_connectivity[elements[0]]:
-            if len(bc_vertices.intersection(mesh.element_vertices[element_neighbour])) > 0:
-                removed_elements.add(element_neighbour)
+            if len(bc_vertices.intersection(mesh.element_vertices[element_neighbour])) < min_shared_vertices:
+                continue
+
+            neighbour_bcs = {mesh.facet_to_bc_map[id_facet] for id_facet in mesh.element_facets[element_neighbour]
+                             if mesh.facet_to_bc_map[id_facet] < 0}
+            if any(id_bc != mesh.grouped_bcs.no_flux for id_bc in neighbour_bcs):
+                continue
+
+            removed_elements.add(element_neighbour)
 
     # A set to hold all elements which have had at least one element removed as a neighbour
     # Entries are added when one of their neighbours has been removed from the mesh
