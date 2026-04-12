@@ -29,6 +29,18 @@ from scipy.optimize import linprog
 from ..mesh import GroupedBCs
 
 
+def _format_component_balance(connections, volumetric_flows, id_component: int) -> str:
+    """Build a compact per-component balance summary for debugging flow optimization failures."""
+    inlets, outlets = connections[id_component]
+    inlet_terms = [f"{id_connection}:{volumetric_flows[id_connection]:.6e}->{id_other}" for id_connection, id_other in inlets.items()]
+    outlet_terms = [f"{id_connection}:{volumetric_flows[id_connection]:.6e}->{id_other}" for id_connection, id_other in outlets.items()]
+    total_in = sum(volumetric_flows[id_connection] for id_connection in inlets)
+    total_out = sum(volumetric_flows[id_connection] for id_connection in outlets)
+    return (f"component {id_component}: total_in={total_in:.6e}, total_out={total_out:.6e}, "
+            f"net={total_in - total_out:.6e}, inlets=[{', '.join(inlet_terms)}], "
+            f"outlets=[{', '.join(outlet_terms)}]")
+
+
 def check_network_for_disconnected_subgraphs(connection_pairings: Dict[int, Dict[int, int]]) -> None:
     """
     Check if the resulting compartment network contains disconnected subgraphs.
@@ -323,7 +335,18 @@ def tweak_final_flows(
         # Summing to zero means that each time it was marked an inlet it is also marked as an outlet.
         # Domain inlets/outlet will not match up.
         if id_connection not in indices_of_domain_inlet_outlet:
-            assert np.sum(a[:, id_connection]) == 0
+            column_sum = np.sum(a[:, id_connection])
+            if column_sum != 0:
+                endpoints = []
+                for id_model, (inlets, outlets) in connections.items():
+                    if id_connection in inlets:
+                        endpoints.append(f"component {id_model} inlet from {inlets[id_connection]}")
+                    if id_connection in outlets:
+                        endpoints.append(f"component {id_model} outlet to {outlets[id_connection]}")
+                raise ValueError(
+                    f"Connection {id_connection} is not balanced in the assembled network: "
+                    f"column_sum={column_sum}, endpoints={endpoints}"
+                )
 
         # Each column must have at least one non-zero entry to indicate that it's been connected to something
         assert np.any(a[:, id_connection] != 0)
@@ -349,11 +372,24 @@ def tweak_final_flows(
         for id_connection in outlets.keys():
             b[i] += volumetric_flows[id_connection]
 
+    print(f"Flow optimization problem size: {a.shape[0]} components, {a.shape[1]} connections")
     print("BEFORE: MAX abs error: {:.4e}".format(np.max(abs(b)) * v_min))
     print("BEFORE: AVG abs error: {:.4e}".format(np.mean(abs(b)) * v_min))
+    unbalanced_components = np.flatnonzero(np.abs(b) * v_min > atol_opt)
+    if unbalanced_components.size:
+        print(f"Components exceeding atol_opt before optimization: {unbalanced_components.tolist()}")
+        for row_index in unbalanced_components[:10]:
+            print(_format_component_balance(connections, volumetric_flows * v_min, id_models[row_index]))
+
     # Solve the equation
     results = linprog(c, A_eq=a, b_eq=b, bounds=(0, None), integrality=2)
     if not results["success"]:
+        print("Flow optimization failed with diagnostics:")
+        print(f"status={results.get('status')}, message={results.get('message')}")
+        rank = int(np.linalg.matrix_rank(a.astype(float)))
+        print(f"constraint_matrix_rank={rank}, rows={a.shape[0]}, cols={a.shape[1]}")
+        for row_index, id_model in enumerate(id_models[:10]):
+            print(_format_component_balance(connections, volumetric_flows * v_min, id_model))
         raise Exception("Flow optimization did not converge. \n" +
                         "Message:" + results["message"])
 
