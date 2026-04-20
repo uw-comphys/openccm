@@ -94,6 +94,7 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
 
     atol_opt        = config_parser.get_item(['COMPARTMENT MODELLING', 'atol_opt'],       float)
     dist_threshold  = config_parser.get_item(['COMPARTMENT MODELLING', 'dist_threshold'], float)
+    flow_threshold  = config_parser.get_item(['COMPARTMENT MODELLING', 'flow_threshold'], float)
 
     # The volume of each compartment
     volumes_compartments: Dict[int, float] = dict()
@@ -110,6 +111,7 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
 
     # 1.2 If it's a closed system, add extra inlet flows to allow for the flows to be tweaked
     need_extra_flows = len(mesh.grouped_bcs.domain_in_out_names) == 0
+    extra_connection_ids: Set[int] = set()
     if need_extra_flows:
         config_parser['INPUT']['domain_inlet_names'] = "('extra_inlet',)"
         tmp_grouped_bcs = GroupedBCs(config_parser)
@@ -118,12 +120,14 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
         id_extra_compartment = max(compartments) + 1
         extra_compartment: Dict[int, int] = {id_next_connection: tmp_grouped_bcs.id('extra_inlet')}
         _volumetric_flows[id_next_connection] = 0
+        extra_connection_ids.add(id_next_connection)
         id_next_connection += 1
         for compartment, connections in connection_pairing.items():
             connections[id_next_connection] = id_extra_compartment
             extra_compartment[-id_next_connection] = compartment
             _volumetric_flows[id_next_connection] = 0
             compartment_to_extra_connection[compartment] = id_next_connection
+            extra_connection_ids.add(id_next_connection)
             id_next_connection += 1
         connection_pairing[id_extra_compartment] = extra_compartment
     else:
@@ -145,14 +149,14 @@ def create_pfr_network(compartments:        Dict[int, Set[int]],
         if need_extra_flows:
             # Put in to be the second inlet into the compartment
             i_first_inlet = next(i for i, (_, id_connection) in enumerate(connections_distances_i) if id_connection > 0)
-            connections_distances_i.insert(i_first_inlet+1, (connections_distances_i[i_first_inlet][0], compartment_to_extra_connection[id_compartment]))
+            connections_distances_i.insert(i_first_inlet + 1, (connections_distances_i[i_first_inlet][0], compartment_to_extra_connection[id_compartment]))
 
         # 1.4b Reorder connections
         connections_distances_i = _fix_connection_ordering(connections_distances_i, _volumetric_flows, id_compartment, atol_opt)
         # 1.4c Re-order domain inlets/outlets
         connections_distances_i = _fix_domain_boundary_connection_ordering(connections_distances_i, compartment_connections, mesh.grouped_bcs, id_compartment)
         # 1.4d Merge connection locations
-        connection_locations[id_compartment] = _merge_connections(connections_distances_i, _volumetric_flows, dist_threshold, compartment_connections, atol_opt)
+        connection_locations[id_compartment] = _merge_connections(connections_distances_i, _volumetric_flows, dist_threshold, flow_threshold, compartment_connections, atol_opt, extra_connection_ids)
 
     ####################################################################################################################
     # 2. Split compartment into PFRs
@@ -234,7 +238,7 @@ def _compartments_to_pfrs(connection_locations:      Dict[int, List[Tuple[float,
                           id_of_next_pfr:            int,
                           id_of_next_connection:     int,
                           element_distances:         Dict[int, List[Tuple[float, int]]],
-                         skip_last_compartment:     bool) \
+                          skip_last_compartment:     bool) \
         -> Tuple[
             Dict[int, float],
             Dict[int, float],
@@ -409,6 +413,14 @@ def _compartments_to_pfrs(connection_locations:      Dict[int, List[Tuple[float,
             # Save the volume of this compartment
             # (total volume * fractional distance between upstream and downstream cutoffs)
             volume_i = volumes_compartments[id_compartment_i] * (connections_outlet_edge[0] - connections_inlet_edge[0])
+            if volume_i <= 0:
+                raise AssertionError(
+                    "Encountered non-positive PFR volume while splitting compartment "
+                    f"{id_compartment_i}. "
+                    f"inlet_location={connections_inlet_edge[0]!r}, outlet_location={connections_outlet_edge[0]!r}, "
+                    f"inlet_connections={connections_inlet_edge[1]!r}, outlet_connections={connections_outlet_edge[1]!r}, "
+                    f"all_connection_locations={connection_locations_i!r}, compartment_volume={volumes_compartments[id_compartment_i]!r}"
+                )
             assert volume_i > 0
             volumes_pfr[id_pfr] = volume_i
 
@@ -500,8 +512,10 @@ def _compartments_to_pfrs(connection_locations:      Dict[int, List[Tuple[float,
 def _merge_connections(inlets_and_outlets:      List[Tuple[float, int]],
                        volumetric_flows:        Dict[int, float],
                        dist_threshold:          float,
+                       flow_threshold:          float,
                        compartment_connections: Dict[int, int],
-                       atol_opt:                float)\
+                       atol_opt:                float,
+                       extra_connection_ids:    Set[int])\
         -> List[Tuple[float, List[int]]]:
     """
     Function to merge inlets/outlet by changing their location along the compartment.
@@ -536,6 +550,7 @@ def _merge_connections(inlets_and_outlets:      List[Tuple[float, int]],
                                   A positive value signifies an inlet and a negative value signifies and outlet.
     * volumetric_flows:         Dictionary to look up the flowrate through each connection by its ID
     * dist_threshold:           The maximum distance between any two points in a merge connection location
+    * flow_threshold:           Minimum volumetric flow required for a valid connection at the model stage.
     * compartment_connections:  Dictionary mapping the connection IDs for a compartment
                                 to the compartment on the other side.
     * atol_opt:                 Absolute tolerate used for conservation of mass.
@@ -548,6 +563,10 @@ def _merge_connections(inlets_and_outlets:      List[Tuple[float, int]],
     flows_in:           List[float]                     = []
     flows_out:          List[float]                     = []
     flows_intra:        List[float]                     = []
+    extra_connections:  List[int]                       = []
+    extra_flow_in = 0.0
+    first_group_created = False
+    original_ids = [id_connection for _, id_connection in inlets_and_outlets]
     inlets_and_outlets                                  = inlets_and_outlets.copy()
 
     # Ensure that the first and last connections are of the correct types and in the correct locations
@@ -579,9 +598,40 @@ def _merge_connections(inlets_and_outlets:      List[Tuple[float, int]],
         if compartment_connections[id] < 0:
             domain_inlet_outlet_connections.add(id)
 
+    def recompute_existing_intra_flows() -> None:
+        for k, (_pos_k, ids_k) in enumerate(connections_merged):
+            if k == 0:
+                flows_intra[k] = 0.0
+                continue
+
+            if _pos_k == 0.0 or _pos_k == 1.0:
+                flows_intra[k] = 0.0
+                continue
+
+            flows_intra[k] = (flows_in[k-1] + flows_intra[k-1]) - flows_out[k]
+            if flows_intra[k] <= 0:
+                raise AssertionError(
+                    "Encountered non-positive intra-compartment flow while recomputing existing merged connections. "
+                    f"group_index={k}, ids={ids_k!r}, flows_in={flows_in!r}, flows_out={flows_out!r}, "
+                    f"flows_intra={flows_intra!r}, connections_merged={connections_merged!r}"
+                )
+
     # Need to use a while loop since we're going to be modifying the length of the list as we go.
     i = 0
     while len(inlets_and_outlets) > 0:
+        if abs(inlets_and_outlets[0][1]) in extra_connection_ids:
+            _, id_inlet_outlet = inlets_and_outlets.pop(0)
+            extra_connections.append(id_inlet_outlet)
+            extra_flow_in += volumetric_flows[abs(id_inlet_outlet)]
+            if first_group_created:
+                assert np.all([id_connection > 0 for id_connection in extra_connections])
+                connections_merged[0][1].extend(extra_connections)
+                flows_in[0] += extra_flow_in
+                recompute_existing_intra_flows()
+                extra_connections = []
+                extra_flow_in = 0.0
+            continue
+
         flows_in.append(0.0)
         flows_out.append(0.0)
         flows_intra.append(0.0)
@@ -597,11 +647,19 @@ def _merge_connections(inlets_and_outlets:      List[Tuple[float, int]],
             flows_out[i] += volumetric_flows[abs(ids[0])]
         else:
             flows_in[i] += volumetric_flows[ids[0]]
+            if i == 0 and len(extra_connections) > 0:
+                flows_in[i] += extra_flow_in
+                ids.extend(extra_connections)
+                extra_connections = []
+                extra_flow_in = 0.0
 
         # Iterate over the rest of the inlets/outlets trying to merge things in.
         while len(inlets_and_outlets) > 0:
             pos_candidate, id_candidate = inlets_and_outlets[0]
             assert pos_candidate >= pos_i
+
+            if abs(id_candidate) in extra_connection_ids:
+                break
 
             if id_inlet_outlet in domain_inlet_outlet_connections:
                 # Only merge other domain intets/outlets together
@@ -631,7 +689,10 @@ def _merge_connections(inlets_and_outlets:      List[Tuple[float, int]],
                 # Only need to check if the connection to add is an outlet
                 # Don't check if we're merging at the last location since all the outlets have to be added
                 if id_candidate < 0 and pos_candidate != 1.0:
-                    if (flows_out[i] + volumetric_flows[abs(id_candidate)]) > flows_in[i-1] + flows_intra[i-1]:
+                    _flow_in = (flows_in[i-1] + flows_intra[i-1])
+                    _flow_out = flows_out[i] + volumetric_flows[abs(id_candidate)]
+                    _flow_intra = _flow_in - _flow_out
+                    if _flow_intra <= 0:
                         # Intra-compartment flow would be reverse direction
                         break
 
@@ -650,7 +711,13 @@ def _merge_connections(inlets_and_outlets:      List[Tuple[float, int]],
             # flows_intra.append(0.0)
         else:
             flows_intra[i] = (flows_in[i-1] + flows_intra[i-1]) - flows_out[i]
-            assert flows_intra[i] > 0
+            if flows_intra[i] <= 0:
+                raise AssertionError(
+                    "Encountered non-positive intra-compartment flow while merging connections. "
+                    f"group_index={i}, ids={ids!r}, positions={positions!r}, "
+                    f"flows_in={flows_in!r}, flows_out={flows_out!r}, flows_intra={flows_intra!r}, "
+                    f"connections_merged={connections_merged!r}, remaining={inlets_and_outlets!r}"
+                )
 
         # Calculate the location of the merged positions
         if 0.0 in positions:  # One of the merged inlets is the first inlet
@@ -668,10 +735,19 @@ def _merge_connections(inlets_and_outlets:      List[Tuple[float, int]],
                 position_merged += flow * positions[j]
                 volumetric_sum += flow
 
+            if volumetric_sum < flow_threshold:
+                raise AssertionError(
+                    "Encountered merged connection group below flow threshold. "
+                    f"volumetric_sum={volumetric_sum!r}, flow_threshold={flow_threshold!r}, "
+                    f"ids={ids!r}, positions={positions!r}, compartment_connections="
+                    f"{[compartment_connections[id_connection] for id_connection in ids]!r}"
+                )
+
             position_merged /= volumetric_sum
 
         # Save all inlets/outlets at their new locations
         connections_merged.append((position_merged, ids))
+        first_group_created = True
         i += 1
 
     # The first entry must be an inlet (inlets are represented by a positive connection ID)
@@ -679,10 +755,21 @@ def _merge_connections(inlets_and_outlets:      List[Tuple[float, int]],
     # The last entry must be an outlet (outlets are represented by a negative connection ID)
     assert np.all([id_connection < 0 for id_connection in connections_merged[-1][1]])
 
+    assert len(extra_connections) == 0
+    assert np.isclose(extra_flow_in, 0.0)
+
     # A domain BC should not have been merged into any of the locations:
     for _, connections in connections_merged:
         other_side = np.array([compartment_connections[connection] for connection in connections])
         assert np.all(other_side < 0) or np.all(other_side >= 0)
+
+    flattened_ids = [id_connection for _, connections in connections_merged for id_connection in connections]
+    assert sorted(flattened_ids) == sorted(original_ids)
+    assert all(abs(connection) not in extra_connection_ids or len(connections) > 1
+               for _, connections in connections_merged for connection in connections)
+    assert all(pos_l < pos_r for (pos_l, _), (pos_r, _) in zip(connections_merged, connections_merged[1:]))
+    assert connections_merged[0][0] == 0.0
+    assert connections_merged[-1][0] == 1.0
 
     assert len(flows_in) == len(flows_out) == len(flows_intra)
 
@@ -799,6 +886,11 @@ def _fix_connection_ordering(inlets_and_outlets:    List[Tuple[float, int]],
     # The compartments won't be fully conservative due to using a 0th order projection of the velocity.
     # The flows will be tweaked after the compartments are modelled as PFRs.
     # For now, we need to ensure that the error is not very large.
+    if not (0 < net_flow < atol_opt):
+        raise AssertionError(
+            f"Invalid compartment net flow in _fix_connection_ordering for compartment {id_compartment}: "
+            f"net_flow={net_flow!r}, connections={inlets_and_outlets!r}"
+        )
     assert 0 < net_flow < atol_opt
 
     # Move inlets or outlets around so that the flow inside the compartment
