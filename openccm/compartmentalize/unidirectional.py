@@ -454,6 +454,8 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
             while len(compartments_to_merge) > 0:
                 id_compartment = compartments_to_merge.pop()
                 if needs_merging(id_compartment, connection_pairing, compartment_network):
+                    if len(connection_pairing) <= 1:
+                        break
                     id_merge_into = find_best_merge_target(id_compartment, connection_pairing[id_compartment], compartment_avg_directions, volumetric_flows)
                     _merge_two_compartments(id_merge_into, id_compartment, compartments, compartment_network,
                                             compartment_sizes, connection_pairing, compartment_avg_directions,
@@ -469,6 +471,9 @@ def merge_compartments(compartments:        Dict[int, Set[int]],
                 compartment_sizes[compartment] = np.inf
 
         while np.any(compartment_sizes < min_compartment_size):
+            if len(connection_pairing) <= 1:
+                break
+
             id_smallest: int = np.argmin(compartment_sizes)
             if DEBUG: logging.write("smallest: {} ".format(id_smallest))
 
@@ -1027,6 +1032,8 @@ def _merge_two_compartments(id_merge_into:              int,
         while len(compartments_to_merge) > 0:
             id_to_merge = compartments_to_merge.pop()
             if needs_merging(id_to_merge, connection_pairing, compartment_network):
+                if len(connection_pairing) <= 1:
+                    return
                 id_merge_into = find_best_merge_target(id_to_merge, connection_pairing[id_to_merge], compartment_avg_directions, volumetric_flows)
                 break  # Break out of inner loop and merge id_to_merge
             else:

@@ -189,6 +189,7 @@ def solve_system(
 
     args = (Q_weight, _ddt0, connected_to_another_inlet, all_inlet_ids, c_shape, reactions, bcs)
     output = solve_ivp(ddt, t_span, c0, method=solver, atol=atol, rtol=rtol, args=args, first_step=first_timestep, t_eval=t_eval)
+    assert output.success, output.message
 
     ts: np.ndarray = output.t
     c:  np.ndarray = output.y
